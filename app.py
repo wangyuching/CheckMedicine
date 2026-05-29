@@ -30,9 +30,9 @@ with app.app_context():
 web_alert_message = ""
 alert_clear_time = None  # 用於控制 30 秒後清除提示
 last_remind_time = {}    # 紀錄每 5 分鐘提醒的時間戳
+was_pillbox_absent = False  # 紀錄上一次狀態是否為「找不到藥盒」
 
-
-# 定義吃藥時段 (時, 分)
+# 定義吃藥時間段 (時, 分)
 TIME_SLOTS = {
     'breakfast': {'start': (7, 0), 'end': (8, 0), 'name': '早餐'},
     'lunch': {'start': (12, 0), 'end': (13, 0), 'name': '午餐'},
@@ -131,7 +131,7 @@ cap = cv2.VideoCapture(1)
 
 # ==================== 主要影像與邏輯串流 ====================
 def cap_real_time():
-    global web_alert_message, alert_clear_time, last_remind_time
+    global web_alert_message, alert_clear_time, last_remind_time, was_pillbox_absent
 
     HSV_LOWER = np.array([0, 0, 255])
     HSV_UPPER = np.array([179, 255, 255])
@@ -161,7 +161,7 @@ def cap_real_time():
         bedtime_word = get_target_obb(results, target_cls=0)
         pill_boxes = get_target_obb(results, target_cls=4)
         
-        # ------------------ 時段提醒文字狀態機 ------------------
+        # ------------------ 時間段提醒文字狀態機 ------------------
         slot_key, period_type, slot_name = get_current_time_status()
         now_ts = t.time()
         
@@ -170,11 +170,11 @@ def cap_real_time():
             web_alert_message = ""
             alert_clear_time = None
 
-        # 情況 1：時段前的 30 分鐘 -> 持續顯示提醒
+        # 情況 1：時間段前的 30 分鐘 -> 持續顯示提醒
         if period_type == 'before_30':
-            web_alert_message = f"{slot_name}時段開始吃藥"
+            web_alert_message = f"{slot_name}時間段開始吃藥"
             
-        # 情況 2：時段內 或 時段後的 30 分鐘
+        # 情況 2：時間段內 或 時間段後的 30 分鐘
         elif period_type in ['in_slot', 'after_30']:
             # 檢查當前時段是否已經吃過藥（這裡從即時 tracker 判斷，或者可在 API 中結合 DB 判斷）
             # 如果還沒吃藥，則每 5 分鐘（300秒）更新一次提醒字樣
@@ -182,11 +182,23 @@ def cap_real_time():
                 web_alert_message = f"要吃{slot_name}的藥"
                 last_remind_time[slot_key] = now_ts
                 
-        # 超過時段+30分，自動將 Pending 的時段標記為未服藥（Missed），這部分交由後續歷史或 API 處理更佳
+        # 超過時間段+30分，自動將 Pending 的時段標記為未服藥（Missed），這部分交由後續歷史或 API 處理更佳
         
         # ------------------ 藥盒偵測與放回事件 ------------------
         if pill_boxes:
+            # 核心邏輯：若上一次狀態是「找不到藥盒（was_pillbox_absent 為 True）」，代表藥盒剛剛被放回來！
+            if was_pillbox_absent:
+                print("【系統通知】藥盒已被放回，觸發格子藥丸檢測！")
+                was_pillbox_absent = False  # 重置狀態
+                
+                # 依據目前時間區段，更新網頁提醒字樣
+                if period_type in ['outside', 'before_30']:
+                    web_alert_message = "還沒到吃藥時間段"
+                    alert_clear_time = now_ts + 30  # 設定 30 秒後自動清除
+                elif period_type in ['in_slot', 'after_30']:
+                    web_alert_message = f"要吃{slot_name}的藥"
 
+            # 繼續原本正常的標籤檢測與畫線邏輯
             lid_close = get_target_obb(results, target_cls=1)
             lid_open = get_target_obb(results, target_cls=3)
             all_lids = []
@@ -243,14 +255,15 @@ def cap_real_time():
                 )
 
         else:
+            # 沒有偵測到 pill_boxes -> 代表藥盒離開範圍（動了藥盒）
+            if not was_pillbox_absent:
+                print("【系統通知】偵測不到藥盒標籤，藥盒已被移開。")
+                was_pillbox_absent = True
             
-            # 依據目前時間區段，更新網頁提醒字樣
-            if period_type in ['outside', 'before_30']:
-                web_alert_message = "還沒到吃藥時段"
-                alert_clear_time = now_ts + 30  # 設定 30 秒後自動清除
-            elif period_type in ['in_slot', 'after_30']:
-                web_alert_message = f"要吃{slot_name}的藥"
+            print("Cant find object pill_box.")
+            cv2.putText(pill_detect_frame, "WHERE IS THE PILL BOX?", (20, 250), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
 
+        # 圖片轉換與輸出
         ret, jpeg = cv2.imencode('.jpg', pill_detect_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
         pill_detect_frame = jpeg.tobytes()
         yield(
@@ -258,10 +271,11 @@ def cap_real_time():
             b'Content-Type: image/jpeg\r\n\r\n' + pill_detect_frame + b'\r\n'
         )
 
-        # t.sleep(0.2)
+        t.sleep(0.2)
         
     cap.release()
 
+# ==================== Flask 路由實作 ====================
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -290,7 +304,14 @@ def api_status():
     """
     提供給前端 index.html 進行即時文字提醒更新的 API
     """
-    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    now = datetime.now()
+    if now.hour < 6:
+        target_date = now - timedelta(days=1)
+    else:
+        target_date = now
+        
+    today_str = target_date.strftime("%Y-%m-%d")
     # 撈取今天最後一筆紀錄來獲取吃藥狀態
     record = CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
     
