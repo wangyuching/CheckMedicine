@@ -181,8 +181,6 @@ def cap_real_time():
             if slot_key not in last_remind_time or (now_ts - last_remind_time[slot_key] > 300):
                 web_alert_message = f"要吃{slot_name}的藥"
                 last_remind_time[slot_key] = now_ts
-                
-        # 超過時間段+30分，自動將 Pending 的時段標記為未服藥（Missed），這部分交由後續歷史或 API 處理更佳
         
         # ------------------ 藥盒偵測與放回事件 ------------------
         if pill_boxes:
@@ -311,7 +309,7 @@ def api_status():
         target_date = now
         
     today_str = target_date.strftime("%Y-%m-%d")
-    
+
     # today_str = now.strftime("%Y-%m-%d")
     
     # 撈取今天最後一筆紀錄來獲取吃藥狀態
