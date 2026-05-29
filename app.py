@@ -302,37 +302,50 @@ def api_history():
 @app.route('/api/status')
 def api_status():
     """
-    提供給前端 index.html 進行即時文字提醒更新的 API
+    提供給前端 index.html 進行即時文字提醒與三餐狀態更新的 API
     """
-
-    # now = datetime.now()
-    # if now.hour < 6:
-    #     target_date = now - timedelta(days=1)
-    # else:
-    #     target_date = now
+    now = datetime.now()
+    if now.hour < 6:
+        target_date = now - timedelta(days=1)
+    else:
+        target_date = now
         
-    # today_str = target_date.strftime("%Y-%m-%d")
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = target_date.strftime("%Y-%m-%d")
+    
+    # today_str = now.strftime("%Y-%m-%d")
+    
     # 撈取今天最後一筆紀錄來獲取吃藥狀態
     record = CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
     
-    # 如果你在 db.py 裡還沒有加上 breakfast_status 欄位，
-    # 預設會先回傳 'Pending'，你可以根據需求在 db.py 增加欄位或調整此處的映射
-    return jsonify({
+    # 定義回傳的基本結構
+    status_data = {
         'alert_message': web_alert_message,
-        'breakfast': {
-            'status': getattr(record, 'breakfast_status', 'Pending') if record else 'Pending', 
-            'time': getattr(record, 'breakfast_time', '') if record else ''
-        },
-        'lunch': {
-            'status': getattr(record, 'lunch_status', 'Pending') if record else 'Pending', 
-            'time': getattr(record, 'lunch_time', '') if record else ''
-        },
-        'dinner': {
-            'status': getattr(record, 'dinner_status', 'Pending') if record else 'Pending', 
-            'time': getattr(record, 'dinner_time', '') if record else ''
-        }
-    })
+        'breakfast': {'status': 'Pending', 'time': ''},
+        'lunch': {'status': 'Pending', 'time': ''},
+        'dinner': {'status': 'Pending', 'time': ''}
+    }
+    
+    # 遍歷檢查三餐是否已經逾時
+    for meal_key, slot in TIME_SLOTS.items():
+        # 從資料庫撈取目前的真實狀態
+        db_status = getattr(record, f"{meal_key}_status", 'Pending') if record else 'Pending'
+        db_time = getattr(record, f"{meal_key}_time", '') if record else ''
+        
+        if db_status == 'Checked':
+            status_data[meal_key]['status'] = 'Checked'
+            status_data[meal_key]['time'] = db_time
+        else:
+            # 計算該時段結束 + 30 分鐘的時間點
+            end_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['end'][0], minutes=slot['end'][1])
+            deadline_time = end_time + timedelta(minutes=30)
+            
+            # 如果目前時間已經超過 結束時間+30分鐘，且資料庫不是 Checked，就判定為 Missed
+            if now > deadline_time:
+                status_data[meal_key]['status'] = 'Missed'
+            else:
+                status_data[meal_key]['status'] = 'Pending'
+                
+    return jsonify(status_data)
 
 @app.route('/cap_in_html')
 def cap_in_html():
