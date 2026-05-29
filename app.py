@@ -305,13 +305,14 @@ def api_status():
     提供給前端 index.html 進行即時文字提醒更新的 API
     """
 
-    now = datetime.now()
-    if now.hour < 6:
-        target_date = now - timedelta(days=1)
-    else:
-        target_date = now
+    # now = datetime.now()
+    # if now.hour < 6:
+    #     target_date = now - timedelta(days=1)
+    # else:
+    #     target_date = now
         
-    today_str = target_date.strftime("%Y-%m-%d")
+    # today_str = target_date.strftime("%Y-%m-%d")
+    today_str = datetime.now().strftime("%Y-%m-%d")
     # 撈取今天最後一筆紀錄來獲取吃藥狀態
     record = CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
     
