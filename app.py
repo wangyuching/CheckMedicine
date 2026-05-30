@@ -164,23 +164,32 @@ def cap_real_time():
         # ------------------ 時間段提醒文字狀態機 ------------------
         slot_key, period_type, slot_name = get_current_time_status()
         now_ts = t.time()
+
+        is_current_meal_checked = False
+        if slot_key:
+            with app.app_context():
+                today_str = datetime.now().strftime("%Y-%m-%d")
+                record = CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
+                if record and getattr(record, f"{slot_key}_status", 'Pending') == 'Checked':
+                    is_current_meal_checked = True
         
         # 自動清除「非吃藥時間動藥盒」持續 30 秒的提醒
         if alert_clear_time and now_ts > alert_clear_time:
             web_alert_message = ""
             alert_clear_time = None
 
-        # 情況 1：時間段前的 30 分鐘 -> 持續顯示提醒
         if period_type == 'before_30':
             web_alert_message = f"{slot_name}時間段開始吃藥"
-            
-        # 情況 2：時間段內 或 時間段後的 30 分鐘
+        
         elif period_type in ['in_slot', 'after_30']:
-            # 檢查當前時段是否已經吃過藥（這裡從即時 tracker 判斷，或者可在 API 中結合 DB 判斷）
-            # 如果還沒吃藥，則每 5 分鐘（300秒）更新一次提醒字樣
-            if slot_key not in last_remind_time or (now_ts - last_remind_time[slot_key] > 300):
-                web_alert_message = f"要吃{slot_name}的藥"
-                last_remind_time[slot_key] = now_ts
+            if is_current_meal_checked:
+                web_alert_message = f"已吃過{slot_name}的藥了"
+            else:
+                if slot_key not in last_remind_time or(now_ts - last_remind_time[slot_key] > 300):
+                    web_alert_message = f"要吃{slot_name}的藥"
+                    last_remind_time[slot_key] = now_ts
+        elif period_type == 'outside' and not alert_clear_time:
+            web_alert_message = ""
         
         # ------------------ 藥盒偵測與放回事件 ------------------
         if pill_boxes:
@@ -194,7 +203,10 @@ def cap_real_time():
                     web_alert_message = "還沒到吃藥時間段"
                     alert_clear_time = now_ts + 30  # 設定 30 秒後自動清除
                 elif period_type in ['in_slot', 'after_30']:
-                    web_alert_message = f"要吃{slot_name}的藥"
+                    if is_current_meal_checked:
+                        web_alert_message = f"已吃過{slot_name}的藥了"
+                    else:
+                        web_alert_message = f"要吃{slot_name}的藥"
 
             # 繼續原本正常的標籤檢測與畫線邏輯
             lid_close = get_target_obb(results, target_cls=1)
@@ -257,10 +269,17 @@ def cap_real_time():
             if not was_pillbox_absent:
                 print("【系統通知】偵測不到藥盒標籤，藥盒已被移開。")
                 was_pillbox_absent = True
-            
-            print("Cant find object pill_box.")
-            cv2.putText(pill_detect_frame, "WHERE IS THE PILL BOX?", (20, 250), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
 
+                if period_type in ['outside', 'before_30']:
+                    web_alert_message = "還沒到吃藥時間段"
+                    alert_clear_time = now_ts + 30  # 設定 30 秒後自動清除
+                elif period_type in ['in_slot', 'after_30']:
+                    if is_current_meal_checked:
+                        web_alert_message = f"已吃過{slot_name}的藥了"
+                        alert_clear_time = None
+                    else:
+                        web_alert_message = f"要吃{slot_name}的藥"
+                        alert_clear_time = None
         # 圖片轉換與輸出
         ret, jpeg = cv2.imencode('.jpg', pill_detect_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
         pill_detect_frame = jpeg.tobytes()
