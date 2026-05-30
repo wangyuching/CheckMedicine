@@ -158,7 +158,7 @@ def draw_slot_states(image, box, slot_idx, slot_data):
         pill_label = f"{pill_state}"
         cv2.putText(image, pill_label, (int(x) - 30, int(y) + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)    
 
-def save_frame(frame, current_slots_data, tracker, duration, missing, db_insert):
+def singel_grid_status(frame, current_slots_data, tracker, duration, missing, db_insert):
     current_opens = [
         idx for idx, 
         data in current_slots_data.items() 
@@ -178,16 +178,7 @@ def save_frame(frame, current_slots_data, tracker, duration, missing, db_insert)
                 elapsed_time = t.time() - tracker['open_start_time']
 
                 if elapsed_time > duration:
-                    slot_details = []#will delete at fininal
-                    for idx in current_opens:#will delete at fininal
-                        pill_state = "Full" if current_slots_data[idx]['Has_pill'] else "Empty"#will delete at fininal
-                        slot_details.append(f"slot{idx}_{pill_state}")#will delete at fininal
-                    slots_str = "_".join(slot_details)#will delete at fininal
-                    timestamp = t.strftime("%Y%m%d_%H%M%S")#will delete at fininal
-                    filename = f"saved_slots/{timestamp}_{slots_str}.png"#will delete at fininal
-                    cv2.imwrite(filename, frame)#will delete at fininal
-
-                    db_insert(current_slots_data, frame)
+                    db_insert(current_slots_data)
                     tracker['triggered'] = True
     
     else:

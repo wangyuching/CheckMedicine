@@ -12,7 +12,7 @@ from alotdef import (
     pillbox_head_tail, 
     check_pill_in_split_box,
     draw_slot_states,
-    save_frame
+    singel_grid_status
     )
 from db import db, Pill
 
@@ -25,7 +25,7 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
-def insert_pill_data(current_slots_data, frame):
+def insert_status_to_db(current_slots_data):
     with app.app_context():
         dt_str = t.strftime("%Y-%m-%d %H:%M:%S", t.localtime())
 
@@ -127,13 +127,13 @@ def cap_real_time():
                         
                         draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
 
-                    save_frame(
+                    singel_grid_status(
                         frame=pill_detect_frame,
                         current_slots_data=slots_data,
                         tracker=same_time_tracker,
                         duration=5.0,
                         missing=5.0,
-                        db_insert=insert_pill_data
+                        db_insert=insert_status_to_db
                     )
 
             else:
