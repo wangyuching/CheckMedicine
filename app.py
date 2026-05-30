@@ -11,10 +11,9 @@ from alotdef import (
     lid_connect_split_box, 
     pillbox_head_tail, 
     check_pill_in_split_box,
-    draw_slot_states,
-    save_frame
+    draw_slot_states
     )
-from db import db, CheckPill
+from db import db, CheckPills
 
 app = Flask(__name__)
 
@@ -35,11 +34,9 @@ def insert_pill_data(current_slots_data, frame):
             ("Full" if current_slots_data[i]['Has_pill'] else "Empty")
             for i in range(4)
         ]
-        _, buffer = cv2.imencode('.jpg', frame)
-        img_data = buffer.tobytes()
 
         try:
-            new_data = CheckPill(
+            new_data = CheckPills(
                 dt=dt_str,
                 lid0=lids[0],
                 lid1=lids[1],
@@ -129,15 +126,6 @@ def cap_real_time():
                         
                         draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
 
-                    save_frame(
-                        frame=pill_detect_frame,
-                        current_slots_data=slots_data,
-                        tracker=same_time_tracker,
-                        duration=5.0,
-                        missing=5.0,
-                        db_insert=insert_pill_data
-                    )
-
             else:
                 print("Cant find object pill_box.")
                 cv2.putText(pill_detect_frame, "WHERE IS THE PILL BOX?", (20, 250), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
@@ -149,24 +137,16 @@ def cap_real_time():
                 b'Content-Type: image/jpeg\r\n\r\n' + pill_detect_frame + b'\r\n'
             )
 
-            t.sleep(0.2)
+            # t.sleep(0.2)
     cap.release()
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/home')
-def home():
-    return render_template('index.html')
-
-@app.route('/search')
-def search():
-    return render_template('search.html')
-
 @app.route('/api/history')
 def api_history():
-    history = CheckPill.query.all()
+    history = CheckPills.query.all()
     history_list = []
     for record in history:
         def to_base64(img_blob):
@@ -183,7 +163,7 @@ def api_history():
             'has_pill0': record.has_pill0,
             'has_pill1': record.has_pill1,
             'has_pill2': record.has_pill2,
-            'has_pill3': record.has_pill3
+            'has_pill3': record.has_pill3,
         })
     return jsonify(history_list)
 
@@ -192,4 +172,4 @@ def cap_in_html():
     return Response(cap_real_time(), mimetype='multipart/x-mixed-replace; boundary=pill_detect_frame')
 
 if __name__ == '__main__':
-    app.run(debug=False, host='127.0.0.1', port=1010)
+    app.run(debug=True, host='127.0.0.1', port=1010)

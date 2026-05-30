@@ -2,8 +2,8 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
-class Pill(db.Model):
-    __tablename__ = 'CheckPill'
+class CheckPills(db.Model):
+    __tablename__ = 'CheckPills'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
