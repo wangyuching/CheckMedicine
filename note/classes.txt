@@ -1,0 +1,5 @@
+[0] badtime_word
+[1] lid_close
+[2] lid_hinge
+[3] lid_open
+[4] pill_box

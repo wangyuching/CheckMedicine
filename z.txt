@@ -1,0 +1,9 @@
+zmodel_ver_d0427_v1_e100_b16_i640
+
+mysql -u root -p
+system cls
+use project;
+show tables;
+describe `CheckPill`;
+SELECT * FROM `CheckPill`;
+drop table `CheckPill`;
