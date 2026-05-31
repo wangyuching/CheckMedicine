@@ -13,11 +13,6 @@ def get_target_obb(results, target_cls):
         mask = (classes == target_cls)
         target_boxes = boxes[mask]
         target_boxes_np = target_boxes.cpu().numpy()
-
-        # if len(target_boxes) > 0:
-        #     print(f"Class {target_cls} ({name[target_cls]}) has {len(target_boxes)} objects")
-        # else:
-        #     print(f"There's no objects for Class {target_cls}")
         
         for box in target_boxes_np:
             filtered_boxes.append(box)
@@ -42,14 +37,11 @@ def draw_target_obb(image, boxes, color, thickness=2):
 def split_obb(obb_xywhr, axis='w', num_splits=4, reverse=False):
     xc, yc, w, h, r = obb_xywhr
     
-    # 計算子塊的新尺寸
     new_w = w / num_splits if axis == 'w' else w
     new_h = h / num_splits if axis == 'h' else h
     
     sub_obbs = []
     
-    # 計算每個子塊中心在局部坐標系下的偏移
-    # 例如 4 等分，比例為 -3/8, -1/8, 1/8, 3/8
     steps = np.linspace(-0.5 + 1/(2*num_splits), 0.5 - 1/(2*num_splits), num_splits)
 
     if reverse:
@@ -61,7 +53,6 @@ def split_obb(obb_xywhr, axis='w', num_splits=4, reverse=False):
         else:
             dx, dy = 0, step * h
             
-        # 旋轉矩陣變換
         new_x = xc + dx * np.cos(r) - dy * np.sin(r)
         new_y = yc + dx * np.sin(r) + dy * np.cos(r)
         

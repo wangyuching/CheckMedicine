@@ -17,38 +17,31 @@ from alotdef import (
 from db import db, CheckPills
 
 app = Flask(__name__)
-
 app.config['SQLALCHEMY_DATABASE_URI'] = "mysql+pymysql://root:DataBase@127.0.0.1:3306/project"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app)
 
+db.init_app(app)
 with app.app_context():
     db.create_all()
 
-# 定義吃藥時間段 (時, 分)
 TIME_SLOTS = {
     'breakfast': {'start': (7, 0), 'end': (8, 0), 'name': '早餐'},
     'lunch': {'start': (12, 0), 'end': (13, 0), 'name': '午餐'},
     'dinner': {'start': (17, 0), 'end': (18, 0), 'name': '晚餐'}
 }
-
 MEAL_TO_GRID_INDEX = {
-    'breakfast': 0,  # 0 號格放早餐藥
-    'lunch': 1,      # 1 號格放午餐藥
-    'dinner': 2      # 2 號格放晚餐藥
+    'breakfast': 0,
+    'lunch': 1,
+    'dinner': 2
 }
 
-# 狀態管理類別
 class SystemState:
     def __init__(self):
-        self.is_absent = False          # 藥盒是否被拿走
-        self.absent_start_time = None   # 藥盒開始消失的時間點（防抖動）
-
+        self.is_absent = False
+        self.absent_start_time = None
 sys_state = SystemState()
 
-# ==================== 輔助功能函式 ====================
 def get_current_time_status():
-    """計算當前時間處於哪一個服藥區間"""
     now = datetime.now()
     for key, slot in TIME_SLOTS.items():
         start_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['start'][0], minutes=slot['start'][1])
@@ -67,11 +60,9 @@ def get_current_time_status():
     return None, 'outside', ''
 
 def get_db_record(today_str):
-    """取得當天最新的一筆資料庫紀錄"""
     return CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
 
 def create_default_daily_record(today_str):
-    """為新的一天初始化首筆預設紀錄，防止查詢斷層"""
     dt_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     new_data = CheckPills(
         dt=dt_str,
@@ -84,42 +75,30 @@ def create_default_daily_record(today_str):
     return new_data
 
 def insert_status_to_db(current_slots_data):
-    """
-    此函式統一由 singel_grid_status 在開盒滿足秒數(5秒)後調用。
-    集中處理：1. 判斷時段服藥狀態更新 2. 儲存四格最新狀態
-    """
     with app.app_context():
         now = datetime.now()
         today_str = now.strftime("%Y-%m-%d")
         dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
         
-        # 1. 取得或初始化今日主要紀錄
         record = get_db_record(today_str)
         if not record:
             record = create_default_daily_record(today_str)
             
-        # 2. 統整判斷：當前時段與對應格子的吃藥邏輯
         slot_key, period_type, meal_name = get_current_time_status()
-        
-        # 僅在服藥時段內 (in_slot) 或服藥後半小時內 (after_30) 進行服藥結算
         if slot_key and (period_type in ['in_slot', 'after_30']):
             status_attr = f"{slot_key}_status"
             time_attr = f"{slot_key}_time"
-            
-            # 如果該時段還沒被標記為 Checked，才進行檢查
+
             if hasattr(record, status_attr) and getattr(record, status_attr) != 'Checked':
                 target_grid_idx = MEAL_TO_GRID_INDEX.get(slot_key)
                 
                 if target_grid_idx is not None and target_grid_idx in current_slots_data:
                     grid_data = current_slots_data[target_grid_idx]
                     
-                    # 條件：對應格子為開啟狀態 (Open) 且經影像確認裡面「已經沒有藥物」 (Has_pill == False)
                     if grid_data['lid'] == 'Open' and not grid_data['Has_pill']:
                         setattr(record, status_attr, 'Checked')
                         setattr(record, time_attr, now.strftime("%H:%M:%S"))
                         print(f"[{dt_str}] 🎉 成功觸發：{meal_name}時段服藥成功，更新主狀態！")
-
-        # 3. 統整紀錄：更新目前最新四個格子的蓋子與藥物詳細 Log 到當前紀錄中
         lids = [current_slots_data[i]['lid'] for i in range(4)]
         has_pills = [
             "Unknown" if current_slots_data[i]['lid'] == "Close" else
@@ -128,26 +107,21 @@ def insert_status_to_db(current_slots_data):
         ]
         
         try:
-            # 同步更新主表的當前即時四格特徵
             for i in range(4):
                 setattr(record, f"lid{i}", lids[i])
                 setattr(record, f"has_pill{i}", has_pills[i])
             
-            # 若您的 CheckPills 為唯一的資料表，此處 commit 會同時將「服藥打勾」與「四格狀態」寫入
-            # 如果需要每次開盒都「新增一筆獨立的 Log Row」，可以將此處改為新增另一個 Log Model 的實例並 add
-            record.dt = dt_str  # 更新最後更新時間
+            record.dt = dt_str
             db.session.commit()
             print(f"[{dt_str}] 💾 資料庫已同步保存當前藥盒四格詳細狀態。")
-            
+
         except Exception as e:
             db.session.rollback()
             print(f"資料庫寫入失敗: {e}")
 
-# ==================== 核心物件初始化 ====================
 model = YOLO("best.pt", task="obb")
 cap = cv2.VideoCapture(1)
 
-# ==================== 主要影像與邏輯串流 ====================
 def cap_real_time():
     HSV_LOWER = np.array([0, 0, 255])
     HSV_UPPER = np.array([179, 255, 255])
@@ -169,7 +143,6 @@ def cap_real_time():
         pill_boxes = get_target_obb(results, target_cls=4)
         
         if pill_boxes:
-            # 藥盒在畫面上：重置所有消失計時
             sys_state.is_absent = False
             sys_state.absent_start_time = None
 
@@ -214,11 +187,9 @@ def cap_real_time():
                     db_insert=insert_status_to_db
                 )        
         else:
-            # 防辨識抖動：若藥盒不見，先記錄開始消失的時間點
             if sys_state.absent_start_time is None:
                 sys_state.absent_start_time = t.time()
             
-            # 連續消失超過 0.5 秒，才真正判定為「被拿走 (is_absent = True)」
             if t.time() - sys_state.absent_start_time > 0.5:
                 sys_state.is_absent = True
 
@@ -227,7 +198,6 @@ def cap_real_time():
         
     cap.release()
 
-# ==================== Flask 路由實作 ====================
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -235,11 +205,10 @@ def index():
 @app.route('/api/status')
 def api_status():
     now = datetime.now()        
-    today_str = now.strftime("%Y-%m-%d") # 00:00 自動換日
+    today_str = now.strftime("%Y-%m-%d")
 
     record = get_db_record(today_str)
     if not record:
-        # 如果新的一天還沒有任何紀錄，自動建立初始狀態
         record = create_default_daily_record(today_str)
     
     status_data = {
@@ -248,6 +217,7 @@ def api_status():
         'lunch': {'status': 'Pending', 'time': ''},
         'dinner': {'status': 'Pending', 'time': ''}
     }
+    
     is_current_meal_checked = False
     slot_key, period_type, meal_name = get_current_time_status()
     
