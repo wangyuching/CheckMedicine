@@ -4,19 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/css/style.css">
+    <script src="../static/js/javascript.js" defer></script>
     <title>用藥偵測</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
-    <script src="{{ url_for('static', filename='js/index.js') }}" defer></script>
 </head>
 
 <body>
-
     <div class="system-container">
         <div class="system-header">
             <div class="alert-text" id="alert-msg">網頁連線中...</div>
@@ -25,10 +22,6 @@
         <div class="content-layout">
 
             <div class="left-column">
-                <div class="zone-card prompt-zone">
-                    <div class="realtime-clock" id="live-clock">0000-00-00 00:00:00</div>
-                </div>
-
                 <div class="zone-card camera-zone">
                     <div class="video-wrapper">
                         <img class="camera-feed" src="{{ url_for('cap_in_html') }}" alt="Camera Stream Video">
@@ -37,6 +30,10 @@
             </div>
 
             <div class="right-column">
+                <div class="zone-card prompt-zone">
+                    <div class="realtime-clock" id="live-clock">0000-00-00 00:00:00</div>
+                </div>
+
                 <div class="zone-card check-meals-zone">
                     <div class="zone-title"><i class="fa-solid fa-calendar-check"></i> 今日服藥檢查狀態</div>
 
@@ -44,8 +41,7 @@
                         <div class="meal-item" id="meal-breakfast">
                             <div class="meal-header">
                                 <span class="meal-name">🌅 早餐 (07:00 - 08:00)</span>
-                                <span class="meal-status-icon" id="icon-breakfast"><i class="fa-solid fa-circle-minus"
-                                        style="color:#9CA3AF;"></i></span>
+                                <span class="meal-status-icon" id="icon-breakfast"><i class="fa-solid fa-circle-minus" style="color:#9CA3AF;"></i></span>
                             </div>
                             <span class="status-tag tag-pending" id="tag-breakfast">準備中</span>
                             <span class="meal-time" id="time-breakfast">服藥時間：--:--:--</span>
@@ -54,8 +50,7 @@
                         <div class="meal-item" id="meal-lunch">
                             <div class="meal-header">
                                 <span class="meal-name">☀️ 午餐 (12:00 - 13:00)</span>
-                                <span class="meal-status-icon" id="icon-lunch"><i class="fa-solid fa-circle-minus"
-                                        style="color:#9CA3AF;"></i></span>
+                                <span class="meal-status-icon" id="icon-lunch"><i class="fa-solid fa-circle-minus" style="color:#9CA3AF;"></i></span>
                             </div>
                             <span class="status-tag tag-pending" id="tag-lunch">準備中</span>
                             <span class="meal-time" id="time-lunch">服藥時間：--:--:--</span>
@@ -64,25 +59,14 @@
                         <div class="meal-item" id="meal-dinner">
                             <div class="meal-header">
                                 <span class="meal-name">🌌 晚餐 (17:00 - 18:00)</span>
-                                <span class="meal-status-icon" id="icon-dinner"><i class="fa-solid fa-circle-minus"
-                                        style="color:#9CA3AF;"></i></span>
+                                <span class="meal-status-icon" id="icon-dinner"><i class="fa-solid fa-circle-minus" style="color:#9CA3AF;"></i></span>
                             </div>
                             <span class="status-tag tag-pending" id="tag-dinner">準備中</span>
                             <span class="meal-time" id="time-dinner">服藥時間：--:--:--</span>
                         </div>
-
-                        <div class="system-info-footer">
-                            <div style="margin-top: 4px; color: #2563EB; font-weight: 500;">
-                                提示：請將藥盒置於攝影機視角內。
-                            </div>
-                        </div>
                     </div>
-                </div>
-            </div>
-
-        </div>
+                </div> </div> </div>
     </div>
-
 </body>
 
 </html>
