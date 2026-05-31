@@ -348,15 +348,10 @@
                     } else {
                         alertMsg.classList.remove('alert-urgent');
                     }
-                } else {
-                    alertMsg.innerText = "目前非服藥時段或今日已完成服藥";
-                    alertMsg.classList.remove('alert-urgent');
                 }
 
                 // 2. 輪詢更新 早餐、午餐、晚餐 卡片狀態
                 const meals = ['breakfast', 'lunch', 'dinner'];
-                
-                // 順便獲取當前小時來判斷哪一餐是「當前時段」，給予外框高亮
                 const currentHour = new Date().getHours();
 
                 meals.forEach(meal => {
@@ -375,19 +370,16 @@
 
                     // 依據後端資料庫狀態更新 UI
                     if (data[meal].status === 'Checked') {
-                        // 已吃藥：打勾綠色
                         iconSpan.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#10B981;"></i>';
                         tagSpan.className = 'status-tag tag-checked';
                         tagSpan.innerText = '已服藥';
                         timeSpan.innerText = `服藥時間：${data[meal].time}`;
                     } else if (data[meal].status === 'Missed') {
-                        // 未吃藥：打叉紅色
                         iconSpan.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color:#EF4444;"></i>';
                         tagSpan.className = 'status-tag tag-missed';
                         tagSpan.innerText = '未服藥';
                         timeSpan.innerText = '未在指定時間內服藥';
                     } else {
-                        // 等待中：灰色
                         iconSpan.innerHTML = '<i class="fa-solid fa-circle-minus" style="color:#9CA3AF;"></i>';
                         tagSpan.className = 'status-tag tag-pending';
                         tagSpan.innerText = '準備中';
@@ -400,7 +392,7 @@
                 document.getElementById('alert-msg').innerText = "系統連線中斷...";
             });
     }
-
+    
     // 每 1 秒輪詢一次最新狀態
     setInterval(fetchSystemStatus, 1000);
     window.onload = function() {
