@@ -235,30 +235,28 @@ def api_status():
             else:
                 status_data[meal_key]['status'] = 'Pending'
         
-    alert_msg = "目前非服用藥的時段。"
-    if slot_key:
-        if sys_state.is_absent:
-            if period_type == 'before_30':
-                alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。"
-            elif period_type in ['in_slot', 'after_30']:
-                if is_current_meal_checked:
-                    alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子大開、藥盒放置在畫面中。"
-                else:
-                    alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子大開、藥盒放置在畫面中。"
+    if sys_state.is_absent:
+        if period_type == 'before_30':
+            alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。"
+        elif period_type in ['in_slot', 'after_30']:
+            if is_current_meal_checked:
+                alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子大開、藥盒放置在畫面中。"
             else:
-                alert_msg = f"還沒到服用藥的時段，請放下藥盒，並放置於畫面中。"
-
+                alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子大開、藥盒放置在畫面中。"
         else:
-            if period_type == 'before_30':
-                alert_msg = f"準備服用{meal_name}時段的藥。"
-            elif period_type in ['in_slot', 'after_30']:
-                if is_current_meal_checked:
-                    alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子大開、藥盒放置在畫面中。"
-                else:
-                    alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子大開、藥盒放置在畫面中。"
+            alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。"
+
+    else:
+        if period_type == 'before_30':
+            alert_msg = "準備服用{meal_name}時段的藥。"
+        elif period_type in ['in_slot', 'after_30']:
+            if is_current_meal_checked:
+                alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子大開、藥盒放置在畫面中。"
             else:
-                alert_msg = f"目前非服用藥的時段"  
-    
+                alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子大開、藥盒放置在畫面中。"
+        else:
+            alert_msg = "目前非服用藥的時段。"
+
     status_data['alert_message'] = alert_msg
     return jsonify(status_data)
 

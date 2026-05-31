@@ -126,6 +126,10 @@
             color: #DC2626 !important; /* 警告紅 */
         }
 
+        .alert-done {
+            color: #29dc26 !important;
+        }
+
         /* 2. 攝影畫面 (左下) */
         .camera-zone {
             flex: 1; /* 自動填滿左側下方所有空間 */
@@ -327,11 +331,14 @@
 
                 const alertMsg = document.getElementById('alert-msg');
                 if (data.alert_message) {
-                    alertMsg.innerText = data.alert_message;                    
+                    alertMsg.innerText = data.alert_message;
+                    alertMsg.classList.remove('alert-urgent', 'alert-done');
+
                     if (data.alert_message.includes('請服用') || data.alert_message.includes('還沒到')) {
                         alertMsg.classList.add('alert-urgent');
-                    } else {
-                        alertMsg.classList.remove('alert-urgent');
+                    }
+                    else if (data.alert_message.includes('已服用完')) {
+                        alertMsg.classList.add('alert-done');
                     }
                 }
 
