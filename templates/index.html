@@ -332,16 +332,25 @@
     }
     setInterval(updateClock, 1000);
 
+    let lastDataString = "";
+
     // 向後端 API 請求最新提示與三餐吃藥狀態
     function fetchSystemStatus() {
         fetch('/api/status')
             .then(response => response.json())
             .then(data => {
+                const currentDataString = JSON.stringify(data);
+                if(currentDataString === lastDataString) {
+                    // console.log("資料未變更，跳過更新");
+                    return; // 資料未變更，跳過更新
+                }
+                lastDataString = currentDataString; // 更新最後一次的資料字串
+                console.log("資料已更新，進行 UI 更新", data);
+
                 // 1. 更新提示文字區
                 const alertMsg = document.getElementById('alert-msg');
                 if (data.alert_message) {
-                    alertMsg.innerText = data.alert_message;
-                    
+                    alertMsg.innerText = data.alert_message;                    
                     // 判斷是否為需要高亮變紅的緊急提示字樣
                     if (data.alert_message.includes('要吃') || data.alert_message.includes('還沒到')) {
                         alertMsg.classList.add('alert-urgent');
@@ -392,7 +401,7 @@
                 document.getElementById('alert-msg').innerText = "系統連線中斷...";
             });
     }
-    
+
     // 每 1 秒輪詢一次最新狀態
     setInterval(fetchSystemStatus, 1000);
     window.onload = function() {
