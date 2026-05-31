@@ -218,8 +218,8 @@ def cap_real_time():
             if sys_state.absent_start_time is None:
                 sys_state.absent_start_time = t.time()
             
-            # 連續消失超過 1 秒，才真正判定為「被拿走 (is_absent = True)」
-            if t.time() - sys_state.absent_start_time > 1.0:
+            # 連續消失超過 0.5 秒，才真正判定為「被拿走 (is_absent = True)」
+            if t.time() - sys_state.absent_start_time > 0.5:
                 sys_state.is_absent = True
 
         ret, jpeg = cv2.imencode('.jpg', pill_detect_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
