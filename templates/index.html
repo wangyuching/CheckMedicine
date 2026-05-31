@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧藥盒 AI 監控系統</title>
+    <title>用藥偵測</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -47,19 +47,6 @@
             align-items: center;
             border-bottom: 2px solid #D1D5DB;
             padding-bottom: 12px;
-        }
-
-        .system-title {
-            font-size: 28px;
-            font-weight: 700;
-            color: #1E3A8A; /* 醫療深藍色 */
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .system-title i {
-            color: #2563EB; /* 明亮藍色 */
         }
 
         .realtime-clock {
@@ -134,7 +121,7 @@
             transition: color 0.3s ease;
         }
 
-        /* 當有重要警示時（例如：要吃藥、還沒到時間），透過 JS 動態套用此樣式 */
+        /* 當有重要警示時（例如：要服藥、還沒到時段），透過 JS 動態套用此樣式 */
         .alert-urgent {
             color: #DC2626 !important; /* 警告紅 */
         }
@@ -150,7 +137,7 @@
         .video-wrapper {
             width: 100%;
             height: calc(100% - 35px); /* 扣除標題高度 */
-            background-color: #000000;
+            /* background-color: #000000; */
             border-radius: 12px;
             overflow: hidden;
             display: flex;
@@ -250,22 +237,17 @@
 
 <div class="system-container">
     <div class="system-header">
-        <div class="system-title">
-            <i class="fa-solid fa-laptop-medical"></i> 智慧藥盒 AI 監控系統
-        </div>
-        <div class="realtime-clock" id="live-clock">0000-00-00 00:00:00</div>
+                <div class="alert-text" id="alert-msg">網頁連線中...</div>
     </div>
 
     <div class="content-layout">
         
         <div class="left-column">
             <div class="zone-card prompt-zone">
-                <div class="zone-title"><i class="fa-solid fa-bell"></i> 系統即時提示</div>
-                <div class="alert-text" id="alert-msg">網頁連線中...</div>
+        <div class="realtime-clock" id="live-clock">0000-00-00 00:00:00</div>
             </div>
 
             <div class="zone-card camera-zone">
-                <div class="zone-title"><i class="fa-solid fa-video"></i> 即時影像串流 (AI 辨識)</div>
                 <div class="video-wrapper">
                     <img class="camera-feed" src="{{ url_for('cap_in_html') }}" alt="Camera Stream Video">
                 </div>
@@ -305,8 +287,6 @@
                     </div>
 
                     <div class="system-info-footer">
-                        <div><i class="fa-solid fa-microchip"></i> 核心模組：YOLOv8 OBB</div>
-                        <div><i class="fa-solid fa-database"></i> 狀態資料庫：SQLAlchemy 同步</div>
                         <div style="margin-top: 4px; color: #2563EB; font-weight: 500;">
                             提示：請將藥盒置於攝影機視角內。
                         </div>
@@ -334,32 +314,27 @@
 
     let lastDataString = "";
 
-    // 向後端 API 請求最新提示與三餐吃藥狀態
     function fetchSystemStatus() {
         fetch('/api/status')
             .then(response => response.json())
             .then(data => {
                 const currentDataString = JSON.stringify(data);
                 if(currentDataString === lastDataString) {
-                    // console.log("資料未變更，跳過更新");
-                    return; // 資料未變更，跳過更新
+                    return;
                 }
-                lastDataString = currentDataString; // 更新最後一次的資料字串
+                lastDataString = currentDataString;
                 console.log("資料已更新，進行 UI 更新", data);
 
-                // 1. 更新提示文字區
                 const alertMsg = document.getElementById('alert-msg');
                 if (data.alert_message) {
                     alertMsg.innerText = data.alert_message;                    
-                    // 判斷是否為需要高亮變紅的緊急提示字樣
-                    if (data.alert_message.includes('要吃') || data.alert_message.includes('還沒到')) {
+                    if (data.alert_message.includes('請服用') || data.alert_message.includes('還沒到')) {
                         alertMsg.classList.add('alert-urgent');
                     } else {
                         alertMsg.classList.remove('alert-urgent');
                     }
                 }
 
-                // 2. 輪詢更新 早餐、午餐、晚餐 卡片狀態
                 const meals = ['breakfast', 'lunch', 'dinner'];
                 const currentHour = new Date().getHours();
 
@@ -369,15 +344,12 @@
                     const tagSpan = document.getElementById(`tag-${meal}`);
                     const timeSpan = document.getElementById(`time-${meal}`);
 
-                    // 先重置外框高亮
                     itemCard.classList.remove('current-active');
                     
-                    // 動態標註當前時段的外框 (早: 7點, 午: 12點, 晚: 17點)
                     if (meal === 'breakfast' && currentHour === 7) itemCard.classList.add('current-active');
                     if (meal === 'lunch' && currentHour === 12) itemCard.classList.add('current-active');
                     if (meal === 'dinner' && currentHour === 17) itemCard.classList.add('current-active');
 
-                    // 依據後端資料庫狀態更新 UI
                     if (data[meal].status === 'Checked') {
                         iconSpan.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#10B981;"></i>';
                         tagSpan.className = 'status-tag tag-checked';
@@ -402,7 +374,6 @@
             });
     }
 
-    // 每 1 秒輪詢一次最新狀態
     setInterval(fetchSystemStatus, 1000);
     window.onload = function() {
         updateClock();

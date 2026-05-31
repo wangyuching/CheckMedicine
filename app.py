@@ -174,7 +174,7 @@ def cap_real_time():
                     if i == 3:
                         cv2.putText(pill_detect_frame, "TAIL", (int(sub_box[0]), int(sub_box[1]-20)), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-                    draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
+                    # draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
 
             single_grid_status(
                     frame=pill_detect_frame, 
@@ -191,7 +191,7 @@ def cap_real_time():
             if t.time() - sys_state.absent_start_time > 0.5:
                 sys_state.is_absent = True
 
-        ret, jpeg = cv2.imencode('.jpg', pill_detect_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+        ret, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
         yield(b'--pill_detect_frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
         
     cap.release()
@@ -239,15 +239,15 @@ def api_status():
     if slot_key:
         if period_type == 'before_30':
             if sys_state.is_absent:
-                alert_msg = "還沒到服藥時段，放下藥盒!!!"
+                alert_msg = "還沒到服藥時段，請放下藥盒"
             else:
                 alert_msg = f"準備服用{meal_name}時段的藥"
                 
         elif period_type in ['in_slot', 'after_30']:
             if is_current_meal_checked:
-                alert_msg = f"已服用過{meal_name}的藥了"
+                alert_msg = f"已服用過{meal_name}的藥了，請將藥盒保持大開"
             else:
-                alert_msg = f"服用{meal_name}時段的藥"
+                alert_msg = f"請服用{meal_name}時段的藥"
     
     status_data['alert_message'] = alert_msg
     return jsonify(status_data)
