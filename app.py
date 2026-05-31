@@ -4,7 +4,6 @@ import time as t
 from datetime import datetime, timedelta
 import numpy as np
 from flask import Flask, render_template, Response, jsonify
-import base64
 
 from alotdef import (
     get_target_obb, 
@@ -26,12 +25,6 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
-# ==================== 全域變數與配置 ====================
-web_alert_message = ""
-alert_clear_time = None  # 用於控制 30 秒後清除提示
-last_remind_time = {}    # 紀錄每 5 分鐘提醒的時間戳
-was_pillbox_absent = False  # 紀錄上一次狀態是否為「找不到藥盒」
-
 # 定義吃藥時間段 (時, 分)
 TIME_SLOTS = {
     'breakfast': {'start': (7, 0), 'end': (8, 0), 'name': '早餐'},
@@ -39,14 +32,17 @@ TIME_SLOTS = {
     'dinner': {'start': (17, 0), 'end': (18, 0), 'name': '晚餐'}
 }
 
+# 狀態管理類別
+class SystemState:
+    def __init__(self):
+        self.is_absent = False          # 藥盒是否被拿走
+        self.absent_start_time = None   # 藥盒開始消失的時間點（防抖動）
+
+sys_state = SystemState()
+
 # ==================== 輔助功能函式 ====================
 def get_current_time_status():
-    """
-    根據目前時間，判斷處於哪個時端與前後範圍
-    回傳: slot_key, period_type ('before_30', 'in_slot', 'after_30', 'outside'), slot_name
-    """
     now = datetime.now()
-    
     for key, slot in TIME_SLOTS.items():
         start_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['start'][0], minutes=slot['start'][1])
         end_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['end'][0], minutes=slot['end'][1])
@@ -63,20 +59,31 @@ def get_current_time_status():
             
     return None, 'outside', ''
 
+def get_db_record(today_str):
+    return CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
+
+def create_default_daily_record(today_str):
+    """新的一天 00:00 後，若無紀錄則自動初始化一筆，避免狀態斷層"""
+    dt_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    new_data = CheckPills(
+        dt=dt_str,
+        lid0="Close", lid1="Close", lid2="Close", lid3="Close",
+        has_pill0="Unknown", has_pill1="Unknown", has_pill2="Unknown", has_pill3="Unknown",
+        breakfast_status="Pending", lunch_status="Pending", dinner_status="Pending"
+    )
+    db.session.add(new_data)
+    db.session.commit()
+    return new_data
+
 def insert_status_to_db(current_slots_data):
-    """
-    你原本的單格狀態變更觸發的資料庫寫入機制（維持保留）
-    """
     with app.app_context():
         dt_str = t.strftime("%Y-%m-%d %H:%M:%S", t.localtime())
-
         lids = [current_slots_data[i]['lid'] for i in range(4)]
         has_pills = [
             "Unknown" if current_slots_data[i]['lid'] == "Close" else
             ("Full" if current_slots_data[i]['Has_pill'] else "Empty")
             for i in range(4)
         ]
-
         try:
             new_data = CheckPills(
                 dt=dt_str,
@@ -85,40 +92,28 @@ def insert_status_to_db(current_slots_data):
             )
             db.session.add(new_data)
             db.session.commit()
-            print("Successfully inserted slot trigger data to DB.")
         except Exception as e:
             db.session.rollback()
             print(f"Error inserting data: {e}")
 
 def update_db_on_pill_check(slots_data):
-    """
-    檢查當前是否在服藥時段或後30分鐘內，
-    如果是，且藥盒內所有格子都空了（藥吃完了），就自動更新當日該時段的服藥狀態與時間。
-    """
     with app.app_context():
         now = datetime.now()
         today_str = now.strftime("%Y-%m-%d")
         slot_key, period_type, _ = get_current_time_status()
         
         if slot_key and (period_type in ['in_slot', 'after_30']):
-            # 取得或創建今天的紀錄（以當天日期為主要查詢依據）
-            # 注意：若你的資料庫主鍵仍是遞增 id，此處會尋找當天最新的一筆
-            record = CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
+            record = get_db_record(today_str)
             if not record:
-                # 如果完全沒有，可選擇不動作或建立一筆新底稿
-                return False
+                record = create_default_daily_record(today_str)
             
-            # 判斷是否所有格子內的藥丸都清空了
             all_empty = all(not data['Has_pill'] for data in slots_data.values())
-            
             status_attr = f"{slot_key}_status"
             time_attr = f"{slot_key}_time"
             
-            # 如果偵測到吃完藥，且資料庫尚未被標記為 Checked
             if hasattr(record, status_attr) and getattr(record, status_attr) != 'Checked':
                 if all_empty:
                     setattr(record, status_attr, 'Checked')
-                    # 假設你在 db.py 有擴充對應的時間欄位，若沒有則只會跳過這行
                     if hasattr(record, time_attr):
                         setattr(record, time_attr, now.strftime("%H:%M:%S"))
                     db.session.commit()
@@ -131,84 +126,30 @@ cap = cv2.VideoCapture(1)
 
 # ==================== 主要影像與邏輯串流 ====================
 def cap_real_time():
-    global web_alert_message, alert_clear_time, last_remind_time, was_pillbox_absent
-
     HSV_LOWER = np.array([0, 0, 255])
     HSV_UPPER = np.array([179, 255, 255])
-
     reverse_state = False
-    has_once_detect_bedtime_word = False
 
     same_time_tracker = {
-        "active_opens": [],
-        "open_start_time": None,
-        "missing_start_time": None,
-        "triggered": False,
+        "active_opens": [], "open_start_time": None, "missing_start_time": None, "triggered": False,
     }
 
     while cap.isOpened():
         ok, frame = cap.read()
-        if (not ok) | (frame is None):    
-            print("usb pull out and in again...")
-            break
+        if (not ok) | (frame is None): break
         
         frame = cv2.resize(frame, (640, 480))
         results = model(frame, verbose=False)
-
         pill_detect_frame = frame.copy()
-        pill_detect_frame = cv2.resize(pill_detect_frame, (640, 480))
 
         bedtime_word = get_target_obb(results, target_cls=0)
         pill_boxes = get_target_obb(results, target_cls=4)
         
-        # ------------------ 時間段提醒文字狀態機 ------------------
-        slot_key, period_type, slot_name = get_current_time_status()
-        now_ts = t.time()
-
-        is_current_meal_checked = False
-        if slot_key:
-            with app.app_context():
-                today_str = datetime.now().strftime("%Y-%m-%d")
-                record = CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
-                if record and getattr(record, f"{slot_key}_status", 'Pending') == 'Checked':
-                    is_current_meal_checked = True
-        
-        # 自動清除「非吃藥時間動藥盒」持續 30 秒的提醒
-        if alert_clear_time and now_ts > alert_clear_time:
-            web_alert_message = ""
-            alert_clear_time = None
-
-        if period_type == 'before_30':
-            web_alert_message = f"{slot_name}時間段開始吃藥"
-        
-        elif period_type in ['in_slot', 'after_30']:
-            if is_current_meal_checked:
-                web_alert_message = f"已吃過{slot_name}的藥了"
-            else:
-                if slot_key not in last_remind_time or(now_ts - last_remind_time[slot_key] > 300):
-                    web_alert_message = f"要吃{slot_name}的藥"
-                    last_remind_time[slot_key] = now_ts
-        elif period_type == 'outside' and not alert_clear_time:
-            web_alert_message = ""
-        
-        # ------------------ 藥盒偵測與放回事件 ------------------
         if pill_boxes:
-            # 核心邏輯：若上一次狀態是「找不到藥盒（was_pillbox_absent 為 True）」，代表藥盒剛剛被放回來！
-            if was_pillbox_absent:
-                print("【系統通知】藥盒已被放回，觸發格子藥丸檢測！")
-                was_pillbox_absent = False  # 重置狀態
-                
-                # 依據目前時間區段，更新網頁提醒字樣
-                if period_type in ['outside', 'before_30']:
-                    web_alert_message = "還沒到吃藥時間段"
-                    alert_clear_time = now_ts + 30  # 設定 30 秒後自動清除
-                elif period_type in ['in_slot', 'after_30']:
-                    if is_current_meal_checked:
-                        web_alert_message = f"已吃過{slot_name}的藥了"
-                    else:
-                        web_alert_message = f"要吃{slot_name}的藥"
+            # 藥盒在畫面上：重置所有消失計時
+            sys_state.is_absent = False
+            sys_state.absent_start_time = None
 
-            # 繼續原本正常的標籤檢測與畫線邏輯
             lid_close = get_target_obb(results, target_cls=1)
             lid_open = get_target_obb(results, target_cls=3)
             all_lids = []
@@ -217,12 +158,7 @@ def cap_real_time():
 
             for pb in pill_boxes:
                 if bedtime_word:
-                    current_res = pillbox_head_tail(bedtime_word, pb)
-                    reverse_state = current_res
-                    has_once_detect_bedtime_word = True
-                    print("Direction updated by bedtime_word.")
-                elif has_once_detect_bedtime_word:
-                    print("Direction kept from last detection.")
+                    reverse_state = pillbox_head_tail(bedtime_word, pb)
 
                 w, h = pb[2], pb[3]
                 split_axis = "w" if w > h else "h"
@@ -231,8 +167,7 @@ def cap_real_time():
                 slots_data = {i: {"lid" : "Missing", "Has_pill": False} for i in range(4)}
                 for lid in all_lids:
                     idx = lid_connect_split_box(lid['box'], sub_boxes)
-                    if idx != -1:
-                        slots_data[idx]['lid'] = lid['state']
+                    if idx != -1: slots_data[idx]['lid'] = lid['state']
 
                 for i, sub_box in enumerate(sub_boxes):
                     current_lid_state = slots_data[i]['lid']
@@ -245,50 +180,21 @@ def cap_real_time():
                     if i == 3:
                         cv2.putText(pill_detect_frame, "TAIL", (int(sub_box[0]), int(sub_box[1]-20)), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-                    
                     draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
 
-                # 檢查是否觸發時段內吃完藥的資料庫更新
-                is_just_eaten = update_db_on_pill_check(slots_data)
-                if is_just_eaten:
-                    # 如果判定剛剛吃完藥了，則當前時段的提示字樣可以提早結束
-                    web_alert_message = ""
-
-                # 執行你原本的格子時間追蹤與資料庫寫入機制
-                singel_grid_status(
-                    frame=pill_detect_frame,
-                    current_slots_data=slots_data,
-                    tracker=same_time_tracker,
-                    duration=5.0,
-                    missing=5.0,
-                    db_insert=insert_status_to_db
-                )
-
+                update_db_on_pill_check(slots_data)
+                singel_grid_status(frame=pill_detect_frame, current_slots_data=slots_data, tracker=same_time_tracker, duration=5.0, missing=5.0, db_insert=insert_status_to_db)
         else:
-            # 沒有偵測到 pill_boxes -> 代表藥盒離開範圍（動了藥盒）
-            if not was_pillbox_absent:
-                print("【系統通知】偵測不到藥盒標籤，藥盒已被移開。")
-                was_pillbox_absent = True
+            # 防辨識抖動：若藥盒不見，先記錄開始消失的時間點
+            if sys_state.absent_start_time is None:
+                sys_state.absent_start_time = t.time()
+            
+            # 連續消失超過 1 秒，才真正判定為「被拿走 (is_absent = True)」
+            if t.time() - sys_state.absent_start_time > 1.0:
+                sys_state.is_absent = True
 
-                if period_type in ['outside', 'before_30']:
-                    web_alert_message = "還沒到吃藥時間段"
-                    alert_clear_time = now_ts + 30  # 設定 30 秒後自動清除
-                elif period_type in ['in_slot', 'after_30']:
-                    if is_current_meal_checked:
-                        web_alert_message = f"已吃過{slot_name}的藥了"
-                        alert_clear_time = None
-                    else:
-                        web_alert_message = f"要吃{slot_name}的藥"
-                        alert_clear_time = None
-        # 圖片轉換與輸出
         ret, jpeg = cv2.imencode('.jpg', pill_detect_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
-        pill_detect_frame = jpeg.tobytes()
-        yield(
-            b'--pill_detect_frame\r\n'
-            b'Content-Type: image/jpeg\r\n\r\n' + pill_detect_frame + b'\r\n'
-        )
-
-        t.sleep(0.2)
+        yield(b'--pill_detect_frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
         
     cap.release()
 
@@ -297,71 +203,56 @@ def cap_real_time():
 def index():
     return render_template('index.html')
 
-@app.route('/api/history')
-def api_history():
-    """
-    保留你原本完整的歷史紀錄 API 邏輯（包含 Blob 轉換檢查）
-    """
-    history = CheckPills.query.all()
-    history_list = []
-    for record in history:
-        # 確保相容舊有的 dt 物件格式與字串格式
-        dt_display = record.dt.strftime("%Y-%m-%d %H:%M:%S") if hasattr(record.dt, 'strftime') else str(record.dt)
-
-        history_list.append({
-            'dt': dt_display,
-            'lid0': record.lid0, 'lid1': record.lid1, 'lid2': record.lid2, 'lid3': record.lid3,
-            'has_pill0': record.has_pill0, 'has_pill1': record.has_pill1, 'has_pill2': record.has_pill2, 'has_pill3': record.has_pill3,
-            # 若你在 db.py 擴充了各時段狀態，也可以在這邊一併補上傳給前端
-        })
-    return jsonify(history_list)
-
 @app.route('/api/status')
 def api_status():
-    """
-    提供給前端 index.html 進行即時文字提醒與三餐狀態更新的 API
-    """
-    now = datetime.now()
-    if now.hour < 6:
-        target_date = now - timedelta(days=1)
-    else:
-        target_date = now
-        
-    today_str = target_date.strftime("%Y-%m-%d")
+    now = datetime.now()        
+    today_str = now.strftime("%Y-%m-%d") # 00:00 自動換日
 
-    # today_str = now.strftime("%Y-%m-%d")
+    record = get_db_record(today_str)
+    if not record:
+        # 如果新的一天還沒有任何紀錄，自動建立初始狀態
+        record = create_default_daily_record(today_str)
     
-    # 撈取今天最後一筆紀錄來獲取吃藥狀態
-    record = CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
-    
-    # 定義回傳的基本結構
     status_data = {
-        'alert_message': web_alert_message,
+        'alert_message': '',
         'breakfast': {'status': 'Pending', 'time': ''},
         'lunch': {'status': 'Pending', 'time': ''},
         'dinner': {'status': 'Pending', 'time': ''}
     }
+    is_current_meal_checked = False
+    slot_key, period_type, meal_name = get_current_time_status()
     
-    # 遍歷檢查三餐是否已經逾時
     for meal_key, slot in TIME_SLOTS.items():
-        # 從資料庫撈取目前的真實狀態
-        db_status = getattr(record, f"{meal_key}_status", 'Pending') if record else 'Pending'
-        db_time = getattr(record, f"{meal_key}_time", '') if record else ''
+        db_status = getattr(record, f"{meal_key}_status", 'Pending')
+        db_time = getattr(record, f"{meal_key}_time", '')
         
         if db_status == 'Checked':
             status_data[meal_key]['status'] = 'Checked'
             status_data[meal_key]['time'] = db_time
+            if meal_key == slot_key:
+                is_current_meal_checked = True
         else:
-            # 計算該時段結束 + 30 分鐘的時間點
             end_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['end'][0], minutes=slot['end'][1])
-            deadline_time = end_time + timedelta(minutes=30)
-            
-            # 如果目前時間已經超過 結束時間+30分鐘，且資料庫不是 Checked，就判定為 Missed
-            if now > deadline_time:
+            if now > (end_time + timedelta(minutes=30)):
                 status_data[meal_key]['status'] = 'Missed'
             else:
                 status_data[meal_key]['status'] = 'Pending'
+        
+    alert_msg = "目前非吃藥時段"
+    if slot_key:
+        if period_type == 'before_30':
+            if sys_state.is_absent:
+                alert_msg = "還沒到吃藥時間段"
+            else:
+                alert_msg = f"{meal_name}時間段開始吃藥"
                 
+        elif period_type in ['in_slot', 'after_30']:
+            if is_current_meal_checked:
+                alert_msg = f"已吃過{meal_name}的藥了"
+            else:
+                alert_msg = f"要吃{meal_name}的藥"
+    
+    status_data['alert_message'] = alert_msg
     return jsonify(status_data)
 
 @app.route('/cap_in_html')
