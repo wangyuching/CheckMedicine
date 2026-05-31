@@ -188,12 +188,12 @@ def cap_real_time():
             if sys_state.absent_start_time is None:
                 sys_state.absent_start_time = t.time()
             
-            if t.time() - sys_state.absent_start_time > 0.3:
+            if t.time() - sys_state.absent_start_time > 0.1:
                 sys_state.is_absent = True
 
         ret, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
         yield(b'--pill_detect_frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-        
+
     cap.release()
 
 @app.route('/')
@@ -258,21 +258,6 @@ def api_status():
                     alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子大開、藥盒放置在畫面中。"
             else:
                 alert_msg = f"目前非服用藥的時段"  
-
-
-
-
-        if period_type == 'before_30':
-            if sys_state.is_absent:
-                alert_msg = "還沒到服藥時段，請放下藥盒"
-            else:
-                alert_msg = f"準備服用{meal_name}時段的藥"
-                
-        elif period_type in ['in_slot', 'after_30']:
-            if is_current_meal_checked:
-                alert_msg = f"已服用過{meal_name}的藥了，請將藥盒保持大開"
-            else:
-                alert_msg = f"請服用{meal_name}時段的藥"
     
     status_data['alert_message'] = alert_msg
     return jsonify(status_data)
