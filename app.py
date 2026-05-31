@@ -12,7 +12,7 @@ from alotdef import (
     pillbox_head_tail, 
     check_pill_in_split_box,
     draw_slot_states,
-    singel_grid_status
+    single_grid_status
     )
 from db import db, CheckPills
 
@@ -32,6 +32,12 @@ TIME_SLOTS = {
     'dinner': {'start': (17, 0), 'end': (18, 0), 'name': '晚餐'}
 }
 
+MEAL_TO_GRID_INDEX = {
+    'breakfast': 0,  # 0 號格放早餐藥
+    'lunch': 1,      # 1 號格放午餐藥
+    'dinner': 2      # 2 號格放晚餐藥
+}
+
 # 狀態管理類別
 class SystemState:
     def __init__(self):
@@ -42,6 +48,7 @@ sys_state = SystemState()
 
 # ==================== 輔助功能函式 ====================
 def get_current_time_status():
+    """計算當前時間處於哪一個服藥區間"""
     now = datetime.now()
     for key, slot in TIME_SLOTS.items():
         start_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['start'][0], minutes=slot['start'][1])
@@ -60,10 +67,11 @@ def get_current_time_status():
     return None, 'outside', ''
 
 def get_db_record(today_str):
+    """取得當天最新的一筆資料庫紀錄"""
     return CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
 
 def create_default_daily_record(today_str):
-    """新的一天 00:00 後，若無紀錄則自動初始化一筆，避免狀態斷層"""
+    """為新的一天初始化首筆預設紀錄，防止查詢斷層"""
     dt_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     new_data = CheckPills(
         dt=dt_str,
@@ -76,49 +84,64 @@ def create_default_daily_record(today_str):
     return new_data
 
 def insert_status_to_db(current_slots_data):
+    """
+    此函式統一由 singel_grid_status 在開盒滿足秒數(5秒)後調用。
+    集中處理：1. 判斷時段服藥狀態更新 2. 儲存四格最新狀態
+    """
     with app.app_context():
-        dt_str = t.strftime("%Y-%m-%d %H:%M:%S", t.localtime())
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 1. 取得或初始化今日主要紀錄
+        record = get_db_record(today_str)
+        if not record:
+            record = create_default_daily_record(today_str)
+            
+        # 2. 統整判斷：當前時段與對應格子的吃藥邏輯
+        slot_key, period_type, meal_name = get_current_time_status()
+        
+        # 僅在服藥時段內 (in_slot) 或服藥後半小時內 (after_30) 進行服藥結算
+        if slot_key and (period_type in ['in_slot', 'after_30']):
+            status_attr = f"{slot_key}_status"
+            time_attr = f"{slot_key}_time"
+            
+            # 如果該時段還沒被標記為 Checked，才進行檢查
+            if hasattr(record, status_attr) and getattr(record, status_attr) != 'Checked':
+                target_grid_idx = MEAL_TO_GRID_INDEX.get(slot_key)
+                
+                if target_grid_idx is not None and target_grid_idx in current_slots_data:
+                    grid_data = current_slots_data[target_grid_idx]
+                    
+                    # 條件：對應格子為開啟狀態 (Open) 且經影像確認裡面「已經沒有藥物」 (Has_pill == False)
+                    if grid_data['lid'] == 'Open' and not grid_data['Has_pill']:
+                        setattr(record, status_attr, 'Checked')
+                        setattr(record, time_attr, now.strftime("%H:%M:%S"))
+                        print(f"[{dt_str}] 🎉 成功觸發：{meal_name}時段服藥成功，更新主狀態！")
+
+        # 3. 統整紀錄：更新目前最新四個格子的蓋子與藥物詳細 Log 到當前紀錄中
         lids = [current_slots_data[i]['lid'] for i in range(4)]
         has_pills = [
             "Unknown" if current_slots_data[i]['lid'] == "Close" else
             ("Full" if current_slots_data[i]['Has_pill'] else "Empty")
             for i in range(4)
         ]
+        
         try:
-            new_data = CheckPills(
-                dt=dt_str,
-                lid0=lids[0], lid1=lids[1], lid2=lids[2], lid3=lids[3],
-                has_pill0=has_pills[0], has_pill1=has_pills[1], has_pill2=has_pills[2], has_pill3=has_pills[3],
-            )
-            db.session.add(new_data)
+            # 同步更新主表的當前即時四格特徵
+            for i in range(4):
+                setattr(record, f"lid{i}", lids[i])
+                setattr(record, f"has_pill{i}", has_pills[i])
+            
+            # 若您的 CheckPills 為唯一的資料表，此處 commit 會同時將「服藥打勾」與「四格狀態」寫入
+            # 如果需要每次開盒都「新增一筆獨立的 Log Row」，可以將此處改為新增另一個 Log Model 的實例並 add
+            record.dt = dt_str  # 更新最後更新時間
             db.session.commit()
+            print(f"[{dt_str}] 💾 資料庫已同步保存當前藥盒四格詳細狀態。")
+            
         except Exception as e:
             db.session.rollback()
-            print(f"Error inserting data: {e}")
-
-def update_db_on_pill_check(slots_data):
-    with app.app_context():
-        now = datetime.now()
-        today_str = now.strftime("%Y-%m-%d")
-        slot_key, period_type, _ = get_current_time_status()
-        
-        if slot_key and (period_type in ['in_slot', 'after_30']):
-            record = get_db_record(today_str)
-            if not record:
-                record = create_default_daily_record(today_str)
-            
-            all_empty = all(not data['Has_pill'] for data in slots_data.values())
-            status_attr = f"{slot_key}_status"
-            time_attr = f"{slot_key}_time"
-            
-            if hasattr(record, status_attr) and getattr(record, status_attr) != 'Checked':
-                if all_empty:
-                    setattr(record, status_attr, 'Checked')
-                    if hasattr(record, time_attr):
-                        setattr(record, time_attr, now.strftime("%H:%M:%S"))
-                    db.session.commit()
-                    return True
-        return False
+            print(f"資料庫寫入失敗: {e}")
 
 # ==================== 核心物件初始化 ====================
 model = YOLO("best.pt", task="obb")
@@ -182,8 +205,14 @@ def cap_real_time():
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
                     draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
 
-                update_db_on_pill_check(slots_data)
-                singel_grid_status(frame=pill_detect_frame, current_slots_data=slots_data, tracker=same_time_tracker, duration=5.0, missing=5.0, db_insert=insert_status_to_db)
+            single_grid_status(
+                    frame=pill_detect_frame, 
+                    current_slots_data=slots_data, 
+                    tracker=same_time_tracker, 
+                    duration=5.0, 
+                    missing=5.0, 
+                    db_insert=insert_status_to_db
+                )        
         else:
             # 防辨識抖動：若藥盒不見，先記錄開始消失的時間點
             if sys_state.absent_start_time is None:

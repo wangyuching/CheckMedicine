@@ -158,7 +158,7 @@ def draw_slot_states(image, box, slot_idx, slot_data):
         pill_label = f"{pill_state}"
         cv2.putText(image, pill_label, (int(x) - 30, int(y) + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)    
 
-def singel_grid_status(frame, current_slots_data, tracker, duration, missing, db_insert):
+def single_grid_status(frame, current_slots_data, tracker, duration, missing, db_insert):
     current_opens = [
         idx for idx, 
         data in current_slots_data.items() 
