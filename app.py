@@ -239,15 +239,15 @@ def api_status():
     if slot_key:
         if period_type == 'before_30':
             if sys_state.is_absent:
-                alert_msg = "還沒到服藥時段"
+                alert_msg = "還沒到服藥時段，放下藥盒!!!"
             else:
-                alert_msg = f"{meal_name}時段開始服藥"
+                alert_msg = f"準備服用{meal_name}時段的藥"
                 
         elif period_type in ['in_slot', 'after_30']:
             if is_current_meal_checked:
-                alert_msg = f"已吃過{meal_name}的藥了"
+                alert_msg = f"已服用過{meal_name}的藥了"
             else:
-                alert_msg = f"要吃{meal_name}的藥"
+                alert_msg = f"服用{meal_name}時段的藥"
     
     status_data['alert_message'] = alert_msg
     return jsonify(status_data)
