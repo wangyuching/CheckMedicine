@@ -98,7 +98,6 @@ def insert_status_to_db(current_slots_data):
                     if grid_data['lid'] == 'Open' and not grid_data['Has_pill']:
                         setattr(record, status_attr, 'Checked')
                         setattr(record, time_attr, now.strftime("%H:%M:%S"))
-                        print(f"[{dt_str}] 🎉 成功觸發：{meal_name}時段服藥成功，更新主狀態！")
         lids = [current_slots_data[i]['lid'] for i in range(4)]
         has_pills = [
             "Unknown" if current_slots_data[i]['lid'] == "Close" else
@@ -113,7 +112,6 @@ def insert_status_to_db(current_slots_data):
             
             record.dt = dt_str
             db.session.commit()
-            print(f"[{dt_str}] 💾 資料庫已同步保存當前藥盒四格詳細狀態。")
 
         except Exception as e:
             db.session.rollback()
@@ -237,13 +235,13 @@ def api_status():
             else:
                 status_data[meal_key]['status'] = 'Pending'
         
-    alert_msg = "目前非吃藥時段"
+    alert_msg = "目前非服藥時段"
     if slot_key:
         if period_type == 'before_30':
             if sys_state.is_absent:
-                alert_msg = "還沒到吃藥時間段"
+                alert_msg = "還沒到服藥時段"
             else:
-                alert_msg = f"{meal_name}時間段開始吃藥"
+                alert_msg = f"{meal_name}時段開始服藥"
                 
         elif period_type in ['in_slot', 'after_30']:
             if is_current_meal_checked:

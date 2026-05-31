@@ -118,7 +118,7 @@ def check_pill_in_split_box(frame, i, box, hsv_lower, hsv_upper, threshold=0.1):
     ratio = white_pixels / total_pixels
 
     has_pill = ratio> threshold
-    print(f"Box {i}: Pill Ratio = {ratio:.2%}")
+    # print(f"Box {i}: Pill Ratio = {ratio:.2%}")
 
     return has_pill, mask
 
