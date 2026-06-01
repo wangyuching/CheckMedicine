@@ -11,6 +11,76 @@ function updateClock() {
 }
 setInterval(updateClock, 1000);
 
+let currentAudio = null;
+let lastAlertMessage = "";
+let loopAudioTimer = null;
+let nextAudioTimeout = null;
+
+function getAudioSrcByMessage(msg) {
+    if (!msg) return "";
+
+    if (msg.includes("還沒到服用藥的時段，請放下藥盒")) {
+        return "/static/audio/01.mp3";
+    }
+
+    if (msg.includes("請服用") && msg.includes("時段的藥")) {
+        if (msg.includes("早餐")) return "/static/audio/02.mp3";
+        if (msg.includes("午餐")) return "/static/audio/03.mp3";
+        if (msg.includes("晚餐")) return "/static/audio/04.mp3";
+    }
+
+    if (msg.includes("已服用完") && msg.includes("時段的藥")) {
+        if (msg.includes("早餐")) return "/static/audio/05.mp3";
+        if (msg.includes("午餐")) return "/static/audio/06.mp3";
+        if (msg.includes("晚餐")) return "/static/audio/07.mp3";
+    }
+
+    if (msg.includes("準備服用") && msg.includes("時段的藥")) {
+        if (msg.includes("早餐")) return "/static/audio/08.mp3";
+        if (msg.includes("午餐")) return "/static/audio/09.mp3";
+        if (msg.includes("晚餐")) return "/static/audio/10.mp3";
+    }
+
+    if (msg.includes("目前非服用藥的時段")) {
+        return "/static/audio/11.mp3";
+    }
+
+    return "";
+}
+
+function playStatusAudio(audioSrc) {
+    if (!audioSrc) return;
+
+    if (loopAudioTimer) {
+        clearInterval(loopAudioTimer);
+    }
+
+    const startNewAudio = () => {
+        currentAudio = new Audio(audioSrc);
+        currentAudio.play().catch(err => {
+            console.log("瀏覽器阻擋自動播放，需要使用者點擊網頁任意地方：", err);
+        });
+
+        loopAudioTimer = setInterval(() => {
+            if (currentAudio) {
+                currentAudio.currentTime = 0;
+                currentAudio.play().catch(e => console.log(e));
+            }
+        }, 15000); 
+    };
+
+    if (currentAudio && !currentAudio.paused) {
+        currentAudio.onended = function() {
+            nextAudioTimeout = setTimeout(() => {
+                startNewAudio();
+            }, 1000);
+        };
+    } else {
+        if (nextAudioTimeout) clearTimeout(nextAudioTimeout);
+        startNewAudio();
+    }
+
+
 let lastDataString = "";
 
 function fetchSystemStatus() {
