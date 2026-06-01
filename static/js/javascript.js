@@ -11,9 +11,9 @@ function updateClock() {
 }
 setInterval(updateClock, 1000);
 
-let currentAudio = null;
+let lastDataString = "";
+let currentAudio = null;       
 let lastAlertMessage = "";
-let loopAudioTimer = null;
 let nextAudioTimeout = null;
 
 function getAudioSrcByMessage(msg) {
@@ -79,9 +79,8 @@ function playStatusAudio(audioSrc) {
         if (nextAudioTimeout) clearTimeout(nextAudioTimeout);
         startNewAudio();
     }
-
-
-let lastDataString = "";
+}
+// ========================================================
 
 function fetchSystemStatus() {
     fetch('/api/status')
@@ -104,6 +103,16 @@ function fetchSystemStatus() {
                 }
                 else if (data.alert_message.includes('已服用完')) {
                     alertMsg.classList.add('alert-done');
+                }
+
+                if (data.alert_message !== lastAlertMessage) {
+                    console.log(`狀態改變！從 [${lastAlertMessage}] 變成 [${data.alert_message}]`);
+                    
+                    const audioSrc = getAudioSrcByMessage(data.alert_message);
+                    
+                    playStatusAudio(audioSrc);
+                    
+                    lastAlertMessage = data.alert_message;
                 }
             }
 
@@ -147,7 +156,12 @@ function fetchSystemStatus() {
 }
 
 setInterval(fetchSystemStatus, 1000);
+
 window.onload = function () {
     updateClock();
     fetchSystemStatus();
+    
+    document.body.addEventListener('click', () => {
+        console.log("使用者互動偵測成功，音效功能已就緒。");
+    }, { once: true });
 };
