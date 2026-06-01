@@ -67,7 +67,7 @@ function playStatusAudio(audioSrc) {
                 currentAudio.currentTime = 0;
                 currentAudio.play().catch(e => console.log(e));
             }
-        }, 30000); 
+        }, 300000); 
     };
 
     if (currentAudio && !currentAudio.paused) {
@@ -99,7 +99,7 @@ function fetchSystemStatus() {
                 alertMsg.innerText = data.alert_message;
                 alertMsg.classList.remove('alert-urgent', 'alert-done');
 
-                if (data.alert_message.includes('請服用') || data.alert_message.includes('還沒到') || data.alert_message.includes('中斷')) {
+                if (data.alert_message.includes('請服用') || data.alert_message.includes('還沒到')) {
                     alertMsg.classList.add('alert-urgent');
                 }
                 else if (data.alert_message.includes('已服用完')) {
@@ -152,7 +152,10 @@ function fetchSystemStatus() {
         })
         .catch(err => {
             console.error("無法取得 API 狀態:", err);
-            document.getElementById('alert-msg').innerText = "系統連線中斷...";
+            const alertMsg = document.getElementById('alert-msg');
+            alertMsg.innerText = "系統連線中斷...";
+            alertMsg.classList.remove('alert-urgent', 'alert-done');
+            alertMsg.classList.add('alert-broken');
         });
 }
 

@@ -88,6 +88,10 @@ body {
     font-weight: 500;
 }
 
+.alert-broken {
+    color: #5e6268 !important;
+}
+
 .alert-urgent {
     color: #DC2626 !important;
 }
