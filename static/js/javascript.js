@@ -15,6 +15,7 @@ let lastDataString = "";
 let currentAudio = null;       
 let lastAlertMessage = "";
 let nextAudioTimeout = null;
+let loopAudioTimer = null;
 
 function getAudioSrcByMessage(msg) {
     if (!msg) return "";
@@ -66,7 +67,7 @@ function playStatusAudio(audioSrc) {
                 currentAudio.currentTime = 0;
                 currentAudio.play().catch(e => console.log(e));
             }
-        }, 15000); 
+        }, 30000); 
     };
 
     if (currentAudio && !currentAudio.paused) {
@@ -98,7 +99,7 @@ function fetchSystemStatus() {
                 alertMsg.innerText = data.alert_message;
                 alertMsg.classList.remove('alert-urgent', 'alert-done');
 
-                if (data.alert_message.includes('請服用') || data.alert_message.includes('還沒到')) {
+                if (data.alert_message.includes('請服用') || data.alert_message.includes('還沒到') || data.alert_message.includes('中斷')) {
                     alertMsg.classList.add('alert-urgent');
                 }
                 else if (data.alert_message.includes('已服用完')) {

@@ -1,5 +1,6 @@
 import os
-from gtts import gTTS
+import asyncio
+from edge_tts import Communicate
 
 # 定義 11 條語音文本
 audio_texts = {
@@ -16,19 +17,25 @@ audio_texts = {
     "11": "目前非服用藥的時段。"
 }
 
-# 建立用來存放音檔的資料夾
-output_dir = "medicine_voice_prompts"
+# 建立存放音檔的資料夾
+output_dir = "medicine_voice_prompts111"
 os.makedirs(output_dir, exist_ok=True)
 
-print("開始生成語音檔案...")
-
-for num, text in audio_texts.items():
-    # lang='zh-TW' 確保使用台灣繁體中文發音
-    tts = gTTS(text=text, lang='zh-TW', slow=False)
-    filename = f"{num}.mp3"
-    filepath = os.path.join(output_dir, filename)
+async def generate_audio():
+    print("開始使用 Edge TTS 生成加速語音檔案...")
     
-    tts.save(filepath)
-    print(f"已生成: {filepath}")
+    for num, text in audio_texts.items():
+        filepath = os.path.join(output_dir, f"{num}.mp3")
+        
+        # voice="zh-TW-HsiaoChenNeural" 代表台灣微軟女聲（曉臻）
+        # rate="+25%" 代表加速 25% (也就是 1.25 倍速)
+        communicate = Communicate(text, voice="zh-TW-HsiaoChenNeural", rate="+5%")
+        
+        await communicate.save(filepath)
+        print(f"已生成 (1.25x): {filepath}")
+        
+    print("\n所有語音檔案生成完畢！")
 
-print("\n所有語音檔案生成完畢！")
+# 執行非同步主程式
+if __name__ == "__main__":
+    asyncio.run(generate_audio())
