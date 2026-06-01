@@ -248,7 +248,7 @@ def api_status():
 
     else:
         if period_type == 'before_30':
-            alert_msg = "準備服用{meal_name}時段的藥。"
+            alert_msg = f"準備服用{meal_name}時段的藥。"
         elif period_type in ['in_slot', 'after_30']:
             if is_current_meal_checked:
                 alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子大開、藥盒放置在畫面中。"
