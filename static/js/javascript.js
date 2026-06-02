@@ -60,6 +60,11 @@ function playStatusAudio(audioSrc) {
         currentAudio = new Audio(audioSrc);
         currentAudio.play().catch(err => {
             console.log("瀏覽器阻擋自動播放，需要使用者點擊網頁任意地方：", err);
+            alert("【系統提示】語音提醒功能已被瀏覽器暫停。\n請點擊「確定」後，再點擊網頁任意位置以啟用服藥語音通知！");
+            
+            if (currentAudio && currentAudio.paused) {
+                currentAudio.play().catch(e => console.log("重新播放失敗:", e));
+            }
         });
 
         loopAudioTimer = setInterval(() => {

@@ -147,7 +147,7 @@ body {
     gap: 15px;
     flex: 1;
     justify-content: flex-start;
-    overflow-y: hidden
+    overflow-y: auto;
 }
 
 .meal-item {
