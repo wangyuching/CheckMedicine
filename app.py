@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 import cv2
 import time as t
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import numpy as np
 from flask import Flask, render_template, Response, jsonify
 
@@ -60,29 +60,37 @@ def get_current_time_status():
     return None, 'outside', ''
 
 def get_db_record(today_str):
-    return CheckPills.query.filter(CheckPills.dt.like(f"{today_str}%")).order_by(CheckPills.id.desc()).first()
+    return CheckPills.query.filter(dt=today_str).first()
 
 def create_default_daily_record(today_str):
-    dt_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     new_data = CheckPills(
-        dt=dt_str,
+        dt=today_str,
+        updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         lid0="Close", lid1="Close", lid2="Close", lid3="Close",
         has_pill0="Unknown", has_pill1="Unknown", has_pill2="Unknown", has_pill3="Unknown",
         breakfast_status="Pending", lunch_status="Pending", dinner_status="Pending"
     )
-    db.session.add(new_data)
-    db.session.commit()
-    return new_data
+    try:
+        db.session.add(new_data)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"建立預設資料失敗: {e}")
+    return CheckPills.query.filter(dt=today_str).first()
 
 def insert_status_to_db(current_slots_data):
     with app.app_context():
         now = datetime.now()
-        today_str = now.strftime("%Y-%m-%d")
-        dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        today_date = now.date()
+        dt_str = now.strftime("%Y-%m-%d")
         
-        record = get_db_record(today_str)
+        record = get_db_record(today_date)
         if not record:
-            record = create_default_daily_record(today_str)
+            record = create_default_daily_record(today_date)
+
+        if not record:
+            print("無法取得或建立資料庫記錄。")
+            return
             
         slot_key, period_type, meal_name = get_current_time_status()
         if slot_key and (period_type in ['in_slot', 'after_30']):
@@ -110,7 +118,7 @@ def insert_status_to_db(current_slots_data):
                 setattr(record, f"lid{i}", lids[i])
                 setattr(record, f"has_pill{i}", has_pills[i])
             
-            record.dt = dt_str
+            record.updated_at = dt_str
             db.session.commit()
 
         except Exception as e:
@@ -203,7 +211,7 @@ def index():
 @app.route('/api/status')
 def api_status():
     now = datetime.now()        
-    today_str = now.strftime("%Y-%m-%d")
+    today_str = now.date()
 
     record = get_db_record(today_str)
     if not record:

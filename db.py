@@ -1,4 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
+from datetime import date
 
 db = SQLAlchemy()
 
@@ -7,7 +8,8 @@ class CheckPills(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
-    dt = db.Column(db.DateTime, nullable=False)
+    dt = db.Column(db.Date, nullable=False, unique=True, default=date.today())
+    updated_at = db.Column(db.String(30), default="")
 
     lid0 = db.Column(db.String(10), default="Unknown")
     lid1 = db.Column(db.String(10), default="Unknown")
