@@ -60,7 +60,7 @@ def get_current_time_status():
     return None, 'outside', ''
 
 def get_db_record(today_str):
-    return CheckPills.query.filter(dt=today_str).first()
+    return CheckPills.query.filter_by(dt=today_str).first()
 
 def create_default_daily_record(today_str):
     new_data = CheckPills(
@@ -76,7 +76,7 @@ def create_default_daily_record(today_str):
     except Exception as e:
         db.session.rollback()
         print(f"建立預設資料失敗: {e}")
-    return CheckPills.query.filter(dt=today_str).first()
+    return CheckPills.query.filter_by(dt=today_str).first()
 
 def insert_status_to_db(current_slots_data):
     with app.app_context():

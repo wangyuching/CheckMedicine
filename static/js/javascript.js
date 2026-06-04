@@ -11,10 +11,12 @@ function updateClock() {
 setInterval(updateClock, 1000);
 
 let lastDataString = "";
-let currentAudio = null;       
+let currentAudio = null;
 let lastAlertMessage = "";
 let nextAudioTimeout = null;
 let loopAudioTimer = null;
+let blockedAudio = "";
+let hasShownSuccessAlert = false;
 
 function getAudioSrcByMessage(msg) {
     if (!msg) return "";
@@ -41,10 +43,6 @@ function getAudioSrcByMessage(msg) {
         if (msg.includes("晚餐")) return "/static/audio/10.mp3";
     }
 
-    if (msg.includes("目前非服用藥的時段")) {
-        return "/static/audio/11.mp3";
-    }
-
     return "";
 }
 
@@ -57,22 +55,34 @@ function playStatusAudio(audioSrc) {
 
     const startNewAudio = () => {
         currentAudio = new Audio(audioSrc);
-        currentAudio.play().catch(err => {
-            console.log("瀏覽器阻擋自動播放，需要使用者點擊網頁任意地方：", err);
-            
-            alert("【系統提示】語音提醒功能已被瀏覽器暫停。\n請點擊「確定」後，\n待網頁載入結束後，點擊網頁任意一處，\n以啟用服藥語音通知！");
-        });
+        currentAudio.play()
+            .then(() => {
+                console.log("語音播放成功！");
+                blockedAudio = "";
+
+                if (!hasShownSuccessAlert) {
+                    hasShownSuccessAlert = true;
+                    setTimeout(() => {
+                        alert("【系統提示】語音提醒功能已啟用！\n未來每當有服藥提醒時，您都會聽到語音通知。");
+                    }, 500);
+                }
+            })
+            .catch(err => {
+                console.log("瀏覽器阻擋自動播放，需要使用者點擊網頁任意地方：", err);
+
+                blockedAudio = audioSrc;
+            });
 
         loopAudioTimer = setInterval(() => {
             if (currentAudio) {
                 currentAudio.currentTime = 0;
                 currentAudio.play().catch(e => console.log(e));
             }
-        }, 300000); 
+        }, 300000);
     };
 
     if (currentAudio && !currentAudio.paused) {
-        currentAudio.onended = function() {
+        currentAudio.onended = function () {
             nextAudioTimeout = setTimeout(() => {
                 startNewAudio();
             }, 1000);
@@ -109,11 +119,11 @@ function fetchSystemStatus() {
 
                 if (data.alert_message !== lastAlertMessage) {
                     console.log(`狀態改變！從 [${lastAlertMessage}] 變成 [${data.alert_message}]`);
-                    
+
                     const audioSrc = getAudioSrcByMessage(data.alert_message);
-                    
+
                     playStatusAudio(audioSrc);
-                    
+
                     lastAlertMessage = data.alert_message;
                 }
             }
@@ -165,8 +175,18 @@ setInterval(fetchSystemStatus, 1000);
 window.onload = function () {
     updateClock();
     fetchSystemStatus();
-    
+
+    alert("【系統提示】語音提醒功能已被瀏覽器暫停。\n請點擊「確定」後，\n待網頁載入結束後，點擊網頁任意一處，\n以啟用服藥語音通知！");
+
     document.body.addEventListener('click', () => {
         console.log("使用者互動偵測成功，音效功能已就緒。");
+        if (blockedAudio) {
+            playStatusAudio(blockedAudio);
+        } else {
+            if (!hasShownSuccessAlert) {
+                hasShownSuccessAlert = true;
+                alert("【系統提示】語音提醒功能已啟用！\n未來每當有服藥提醒時，您都會聽到語音通知。");
+            }
+        }
     }, { once: true });
 };

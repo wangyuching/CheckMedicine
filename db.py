@@ -8,7 +8,7 @@ class CheckPills(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
-    dt = db.Column(db.Date, nullable=False, unique=True, default=date.today())
+    dt = db.Column(db.Date, nullable=False, unique=True, default=date.today)
     updated_at = db.Column(db.String(30), default="")
 
     lid0 = db.Column(db.String(10), default="Unknown")
