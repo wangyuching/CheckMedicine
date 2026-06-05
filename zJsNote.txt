@@ -19,6 +19,9 @@ null
     通常用在物件或資料庫或狀態初始化
 
 
+只要data.alert_message !== lastAlertMessage 為false，5分重複播放舊音效與如果有就1秒後播放新音效都會依舊。
+
+
 js執行順序(與載入順序不等)
     宣告 let 變數
     window.onload 網頁載入完成後執行
@@ -40,43 +43,37 @@ js執行順序(與載入順序不等)
                                         否：檢查alert_message的文字中是否包含「以服用完」：
                                             是：web_alertMsg新增綠字樣式。
                                 檢查alert_message是否與lastAlertMessage不同：
-                                    是：宣告const變數audioSrc < 存放從getAudioSrcByMessage(alert_message)得到的音檔路徑。
-                                            ps.function getAudioSrcByMessage(msg)：根據alert_message中的文字來決定return出的音檔路徑。
-                                        playStatusAudio(audioSrc)：根據audioSrc決定播放的音檔。
-                                            ps.function playStatusAudio(audioSrc):音檔播放與循環。
-                                                如果沒有從getAudioSrcByMessage(alert_message)的return值得到音檔路徑：結束本次playStatusAudio()。
-                                                清除舊的 loopAudioTimer，避免舊狀態的「5 分鐘重複播放」干擾新訊息。
-                                                宣告const函式startNewAudio(只建立不執行，直接跳過內部程式碼)。
-                                                目前是否有上一次的語音正在播放：
-                                                    是：
-                                                    否：
-
-                                                if (currentAudio && !currentAudio.paused) {
-                                                    currentAudio.onended = function () {
-                                                        nextAudioTimeout = setTimeout(() => {
-                                                            startNewAudio();
-                                                        }, 1000);
-                                                    };
-                                                } else {
-                                                    if (nextAudioTimeout) clearTimeout(nextAudioTimeout);
-                                                    startNewAudio();
-                                                }
-
-
-
-                                        lastAlertMessage<將alert_message存入，留給下一秒比對。
-                                    
-
-
-                            根據資料更新「三餐卡片」UI 樣式與狀態
-                           
-                            
-                            
-                            
-                           
-
+                                    是：宣告const變數audioSrc < 存放從getAudioSrcByMessage(alert_message)得到的音檔路徑。(ps.function getAudioSrcByMessage(msg)：根據alert_message中的文字來決定return出的音檔路徑)
+                                        playStatusAudio(audioSrc)：根據audioSrc決定播放的音檔。(ps.function playStatusAudio(audioSrc):音檔播放與循環)
+                                            如果沒有從getAudioSrcByMessage(alert_message)的return值得到音檔路徑：結束本次playStatusAudio()。
+                                            清除舊的 loopAudioTimer，避免舊狀態的「5 分鐘重複播放」干擾新訊息。
+                                            宣告const函式startNewAudio(只建立不執行，直接跳過內部程式碼)。
+                                            目前是否有舊語音(值不為null)and正在播放：
+                                                是(排隊播放新語音)：舊語音綁定 onended（播放結束）事件。
+                                                    nextAudioTimeout 存放一秒後要播放的新語音。
+                                                    舊語音播完一秒後播放執行startNewAudio()。
+                                                否(立即播放新語音)：如果有正在排隊等待一秒後播放的新語音/們，清除。
+                                                    startNewAudio()。
+                                            startNewAudio()：
+                                                currentAudio < 存放新建立的音訊物件(audioSrc)。
+                                                執行currentAudio.play()、建立5分鐘的loopAudioTimer(setInterval循環計時器)，計時到才執行內部程式。
+                                                是否成功播放語音：
+                                                    是(.then)：清空blockAudio。
+                                                    否(.catch)：將audio存入blockAudio。
+                                    lastAlertMessage<將alert_message存入，留給下一秒比對。
+                            宣告const變數mealsName < 存放三餐名稱
+                            宣告const變數currentHour < 存放電腦現在是幾點(0-23)
+                            連續執行 3 次（分別代入 meal = 'breakfast', 'lunch', 'dinner'）
+                                宣告const變數itemCard <  存放從html取得Id為「meal-mealsName」的標籤(卡片外框)。
+                                宣告const變數iconSpan <  存放從html取得Id為「icon-mealsName」的標籤(打勾/叉叉的圖標位置)。
+                                宣告const變數tagSpan <  存放從html取得Id為「tag-mealsName」的標籤(「已服藥/未服藥」的文字標籤)。
+                                宣告const變數timeSpan <  存放從html取得Id為「time-mealsName」的標籤(顯示時間的文字欄位)。
+                                移除itemCard「當前時段明顯」的樣式
+                                如果現在跑的是X餐，而且剛好是X點，X餐卡片就比較明顯。
+                                讀取後端 API 傳過來的資料（data[meal].status），並根據三種不同的狀態換上不同的樣式。    
                 否(沒有取得資料)(.catch (err))：網頁顯示「系統連線中斷」。
-
-
-
-        3. 監聽 Body 點擊事件 
+        3. 監聽 Body 點擊事件：
+            是否有之前因為被瀏覽器阻擋而沒播成功的語音（blockedAudio）：
+                是：在使用者點擊的瞬間立刻把它補播放出來。
+                否：如果還沒顯示過啟用成功提示：設為true
+                                             網頁提示。

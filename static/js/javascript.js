@@ -134,10 +134,10 @@ function fetchSystemStatus() {
                 }
             }
 
-            const meals = ['breakfast', 'lunch', 'dinner'];
+            const mealsName = ['breakfast', 'lunch', 'dinner'];
             const currentHour = new Date().getHours();
 
-            meals.forEach(meal => {
+            mealsName.forEach(meal => {
                 const itemCard = document.getElementById(`meal-${meal}`);
                 const iconSpan = document.getElementById(`icon-${meal}`);
                 const tagSpan = document.getElementById(`tag-${meal}`);
