@@ -82,7 +82,7 @@ def insert_status_to_db(current_slots_data):
     with app.app_context():
         now = datetime.now()
         today_date = now.date()
-        dt_str = now.strftime("%Y-%m-%d")
+        dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
         
         record = get_db_record(today_date)
         if not record:
@@ -182,7 +182,7 @@ def cap_real_time():
                     if i == 3:
                         cv2.putText(pill_detect_frame, "TAIL", (int(sub_box[0]), int(sub_box[1]-20)), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-                    # draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
+                    draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
 
             single_grid_status(
                     frame=pill_detect_frame, 
@@ -193,13 +193,13 @@ def cap_real_time():
                     db_insert=insert_status_to_db
                 )        
         else:
-            if sys_state.absent_start_time is None:
-                sys_state.absent_start_time = t.time()
-            
-            if t.time() - sys_state.absent_start_time > 0.1:
-                sys_state.is_absent = True
+            sys_state.is_absent = True
+            sys_state.absent_start_time = t.time()
 
-        ret, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+            absent_slots_data = {i: {"lid" : "Missing", "Has_pill": False} for i in range(4)}
+            insert_status_to_db(absent_slots_data)
+
+        ret, jpeg = cv2.imencode('.jpg', pill_detect_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
         yield(b'--pill_detect_frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
 
     cap.release()
@@ -245,14 +245,14 @@ def api_status():
         
     if sys_state.is_absent:
         if period_type == 'before_30':
-            alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。"
+            alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。[A]"
         elif period_type in ['in_slot', 'after_30']:
             if is_current_meal_checked:
-                alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子打開、藥盒放置在畫面中。"
+                alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子打開、藥盒放置在畫面中。[A]"
             else:
-                alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子打開、藥盒放置在畫面中。"
+                alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子打開、藥盒放置在畫面中[A]。"
         else:
-            alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。"
+            alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。[A]"
 
     else:
         if period_type == 'before_30':

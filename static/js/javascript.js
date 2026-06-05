@@ -21,6 +21,20 @@ let hasShownSuccessAlert = false;
 function getAudioSrcByMessage(msg) {
     if (!msg) return "";
 
+    if (msg.includes("[A]}")) {
+        if (msg.includes("請服用") && msg.includes("時段的藥")) {
+            if (msg.includes("早餐")) return "/static/audio/02.mp3";
+            if (msg.includes("午餐")) return "/static/audio/03.mp3";
+            if (msg.includes("晚餐")) return "/static/audio/04.mp3";
+        }
+
+        if (msg.includes("已服用完") && msg.includes("時段的藥")) {
+            if (msg.includes("早餐")) return "/static/audio/05.mp3";
+            if (msg.includes("午餐")) return "/static/audio/06.mp3";
+            if (msg.includes("晚餐")) return "/static/audio/07.mp3";
+        }
+    }
+
     if (msg.includes("還沒到服用藥的時段，請放下藥盒")) {
         return "/static/audio/01.mp3";
     }
@@ -92,7 +106,6 @@ function playStatusAudio(audioSrc) {
         startNewAudio();
     }
 }
-// ========================================================
 
 function fetchSystemStatus() {
     fetch('/api/status')
@@ -107,7 +120,7 @@ function fetchSystemStatus() {
 
             const alertMsg = document.getElementById('alert-msg');
             if (data.alert_message) {
-                alertMsg.innerText = data.alert_message;
+                alertMsg.innerText = data.alert_message.replace('[A]', '');
                 alertMsg.classList.remove('alert-urgent', 'alert-done');
 
                 if (data.alert_message.includes('請服用') || data.alert_message.includes('還沒到')) {
