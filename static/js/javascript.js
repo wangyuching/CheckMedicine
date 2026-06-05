@@ -73,13 +73,6 @@ function playStatusAudio(audioSrc) {
             .then(() => {
                 console.log("語音播放成功！");
                 blockedAudio = "";
-
-                if (!hasShownSuccessAlert) {
-                    hasShownSuccessAlert = true;
-                    setTimeout(() => {
-                        alert("【系統提示】語音提醒功能已啟用！\n未來每當有服藥提醒時，您都會聽到語音通知。");
-                    }, 500);
-                }
             })
             .catch(err => {
                 console.log("瀏覽器阻擋自動播放，需要使用者點擊網頁任意地方：", err);
@@ -118,16 +111,16 @@ function fetchSystemStatus() {
             lastDataString = currentDataString;
             console.log("資料已更新，進行 UI 更新", data);
 
-            const alertMsg = document.getElementById('alert-msg');
+            const web_alertMsg = document.getElementById('alert-msg');
             if (data.alert_message) {
-                alertMsg.innerText = data.alert_message.replace('[A]', '');
-                alertMsg.classList.remove('alert-urgent', 'alert-done');
+                web_alertMsg.innerText = data.alert_message.replace('[A]', '');
+                web_alertMsg.classList.remove('alert-urgent', 'alert-done');
 
                 if (data.alert_message.includes('請服用') || data.alert_message.includes('還沒到')) {
-                    alertMsg.classList.add('alert-urgent');
+                    web_alertMsg.classList.add('alert-urgent');
                 }
                 else if (data.alert_message.includes('已服用完')) {
-                    alertMsg.classList.add('alert-done');
+                    web_alertMsg.classList.add('alert-done');
                 }
 
                 if (data.alert_message !== lastAlertMessage) {
@@ -176,13 +169,12 @@ function fetchSystemStatus() {
         })
         .catch(err => {
             console.error("無法取得 API 狀態:", err);
-            const alertMsg = document.getElementById('alert-msg');
-            alertMsg.innerText = "系統連線中斷...";
-            alertMsg.classList.remove('alert-urgent', 'alert-done');
-            alertMsg.classList.add('alert-broken');
+            const web_alertMsg = document.getElementById('alert-msg');
+            web_alertMsg.innerText = "系統連線中斷...";
+            web_alertMsg.classList.remove('alert-urgent', 'alert-done');
+            web_alertMsg.classList.add('alert-broken');
         });
 }
-
 setInterval(fetchSystemStatus, 1000);
 
 window.onload = function () {
@@ -197,8 +189,8 @@ window.onload = function () {
             playStatusAudio(blockedAudio);
         } else {
             if (!hasShownSuccessAlert) {
-                hasShownSuccessAlert = true;
                 alert("【系統提示】語音提醒功能已啟用！\n未來每當有服藥提醒時，您都會聽到語音通知。");
+                hasShownSuccessAlert = true;
             }
         }
     }, { once: true });

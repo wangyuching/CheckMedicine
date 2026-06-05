@@ -1,0 +1,82 @@
+let
+    可沒有初始值
+    宣告後可重新=
+
+const
+    必須有初始值
+    宣告後不可重新=
+
+
+""
+    string
+    有文字欄位，但沒有文字
+    通常用在要放文字或表單輸入
+    例：
+
+null
+    object
+    連欄位都沒有
+    通常用在物件或資料庫或狀態初始化
+
+
+js執行順序(與載入順序不等)
+    宣告 let 變數
+    window.onload 網頁載入完成後執行
+        1. 執行 updateClock()：一秒一次。更新網頁時中UI。
+        2. 執行 fetchSystemStatus()：一秒一次。取得後端API資料......
+            向後端發送 fetch 請求
+            是否成功取得JSON物件的資料，response.json()讀取並解析成JSON物件(response.json() will return a promise)
+                是(取得資料)： 
+                            宣告const變數currentDataString < 存放轉為JSON字串的data。
+                            currentDataString是否與lastDataString相同 
+                                否(一秒內資料沒變=沒動藥盒and狀態沒變)：結束本次fetchSystemStatus()。
+                                是(一秒內資料有變=動藥盒or狀態有變)：將這次的資料存進 lastDataString，留給下一秒比對用。
+                            宣告const變數web_alertMsg < 存放從html取得Id為「alert-mag」的標籤。
+                            檢查 API 是否有提示訊息 (alert_message)：
+                                是：將web_alertMsg的字串中「[A]」取代為「」。
+                                    移除web_alertMsg的樣式
+                                    檢查alert_message的文字中是否包含「請服用」or 「還沒到」：
+                                        是：web_alertMsg新增紅字樣式。
+                                        否：檢查alert_message的文字中是否包含「以服用完」：
+                                            是：web_alertMsg新增綠字樣式。
+                                檢查alert_message是否與lastAlertMessage不同：
+                                    是：宣告const變數audioSrc < 存放從getAudioSrcByMessage(alert_message)得到的音檔路徑。
+                                            ps.function getAudioSrcByMessage(msg)：根據alert_message中的文字來決定return出的音檔路徑。
+                                        playStatusAudio(audioSrc)：根據audioSrc決定播放的音檔。
+                                            ps.function playStatusAudio(audioSrc):音檔播放與循環。
+                                                如果沒有從getAudioSrcByMessage(alert_message)的return值得到音檔路徑：結束本次playStatusAudio()。
+                                                清除舊的 loopAudioTimer，避免舊狀態的「5 分鐘重複播放」干擾新訊息。
+                                                宣告const函式startNewAudio(只建立不執行，直接跳過內部程式碼)。
+                                                目前是否有上一次的語音正在播放：
+                                                    是：
+                                                    否：
+
+                                                if (currentAudio && !currentAudio.paused) {
+                                                    currentAudio.onended = function () {
+                                                        nextAudioTimeout = setTimeout(() => {
+                                                            startNewAudio();
+                                                        }, 1000);
+                                                    };
+                                                } else {
+                                                    if (nextAudioTimeout) clearTimeout(nextAudioTimeout);
+                                                    startNewAudio();
+                                                }
+
+
+
+                                        lastAlertMessage<將alert_message存入，留給下一秒比對。
+                                    
+
+
+                            根據資料更新「三餐卡片」UI 樣式與狀態
+                           
+                            
+                            
+                            
+                           
+
+                否(沒有取得資料)(.catch (err))：網頁顯示「系統連線中斷」。
+
+
+
+        3. 監聽 Body 點擊事件 
