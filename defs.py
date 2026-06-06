@@ -2,9 +2,8 @@ import cv2
 import numpy as np
 import time as t
 
-def get_target_obb(results, target_cls):
+def get_target_obb_cls(results, target_cls):
     filtered_boxes = []
-    # name = ["bedtime_Word", "lid_close", "lid_hinge", "lid_open", "pill_box"]
 
     for r in results:
         classes = r.obb.cls
@@ -19,13 +18,13 @@ def get_target_obb(results, target_cls):
             
     return filtered_boxes
 
-def split_obb(obb_xywhr, axis='w', num_splits=4, reverse=False):
+def split_pillbox_to_slots(obb_xywhr, axis='w', num_splits=4, reverse=False):
     xc, yc, w, h, r = obb_xywhr
     
     new_w = w / num_splits if axis == 'w' else w
     new_h = h / num_splits if axis == 'h' else h
     
-    sub_obbs = []
+    slots = []
     
     steps = np.linspace(-0.5 + 1/(2*num_splits), 0.5 - 1/(2*num_splits), num_splits)
 
@@ -41,11 +40,11 @@ def split_obb(obb_xywhr, axis='w', num_splits=4, reverse=False):
         new_x = xc + dx * np.cos(r) - dy * np.sin(r)
         new_y = yc + dx * np.sin(r) + dy * np.cos(r)
         
-        sub_obbs.append([new_x, new_y, new_w, new_h, r])
+        slots.append([new_x, new_y, new_w, new_h, r])
         
-    return sub_obbs
+    return slots
 
-def lid_connect_split_box(lid_box, sub_boxes):
+def lid_connect_slots(lid_box, sub_boxes):
     lx, ly = lid_box[0], lid_box[1]
     min_dist = float('inf')
     best_idx = -1
@@ -78,7 +77,7 @@ def pillbox_head_tail(bedtime_word, pill_box):
     return True if projection < 0 else False
 
 
-def check_pill_in_split_box(frame, i, box, hsv_lower, hsv_upper, threshold=0.1):
+def check_pill_in_slots(frame, i, box, hsv_lower, hsv_upper, threshold=0.1):
     xc, yc, w, h, r = box
     M = cv2.getRotationMatrix2D((xc, yc), np.degrees(r), 1)
     rotated = cv2.warpAffine(frame, M, (frame.shape[1], frame.shape[0]))
@@ -107,7 +106,7 @@ def check_pill_in_split_box(frame, i, box, hsv_lower, hsv_upper, threshold=0.1):
 
     return has_pill, mask
 
-def draw_slot_states(image, box, slot_idx, slot_data):
+def draw_slots_state(frame, box, slot_idx, slot_data):
     x, y,w, h, r = box
     lid_state = slot_data['lid']
     pill_state = "Full" if slot_data['Has_pill'] else "Empty"
@@ -125,16 +124,16 @@ def draw_slot_states(image, box, slot_idx, slot_data):
     points = cv2.boxPoints(rect)
     points = np.int32(points)
         
-    cv2.polylines(image, [points], isClosed=True, color=color, thickness=2)
+    cv2.polylines(frame, [points], isClosed=True, color=color, thickness=2)
 
     label = f"#{slot_idx} {lid_state}"
-    cv2.putText(image, label, (int(x) - 30, int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    cv2.putText(frame, label, (int(x) - 30, int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
     if lid_state == "Open":
         pill_label = f"{pill_state}"
-        cv2.putText(image, pill_label, (int(x) - 30, int(y) + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)    
+        cv2.putText(frame, pill_label, (int(x) - 30, int(y) + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)    
 
-def single_grid_status(frame, current_slots_data, tracker, duration, missing, db_insert):
+def every_slots_state(frame, current_slots_data, tracker, duration, missing, db_insert):
     current_opens = [
         idx for idx, 
         data in current_slots_data.items() 

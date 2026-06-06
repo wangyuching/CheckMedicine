@@ -6,13 +6,13 @@ import numpy as np
 from flask import Flask, render_template, Response, jsonify
 
 from defs import (
-    get_target_obb, 
-    split_obb, 
-    lid_connect_split_box, 
+    get_target_obb_cls, 
+    split_pillbox_to_slots, 
+    lid_connect_slots, 
     pillbox_head_tail, 
-    check_pill_in_split_box,
-    draw_slot_states,
-    single_grid_status
+    check_pill_in_slots,
+    draw_slots_state,
+    every_slots_state
     )
 from db import db, CheckPills
 
@@ -145,15 +145,15 @@ def cap_real_time():
         results = model(frame, verbose=False)
         pill_detect_frame = frame.copy()
 
-        bedtime_word = get_target_obb(results, target_cls=0)
-        pill_boxes = get_target_obb(results, target_cls=4)
+        bedtime_word = get_target_obb_cls(results, target_cls=0)
+        pill_boxes = get_target_obb_cls(results, target_cls=4)
         
         if pill_boxes:
             sys_state.is_absent = False
             sys_state.absent_start_time = None
 
-            lid_close = get_target_obb(results, target_cls=1)
-            lid_open = get_target_obb(results, target_cls=3)
+            lid_close = get_target_obb_cls(results, target_cls=1)
+            lid_open = get_target_obb_cls(results, target_cls=3)
             all_lids = []
             for ls in lid_close: all_lids.append({'box': ls, 'state': 'Close'})
             for lo in lid_open: all_lids.append({'box': lo, 'state': 'Open'})
@@ -164,27 +164,27 @@ def cap_real_time():
 
                 w, h = pb[2], pb[3]
                 split_axis = "w" if w > h else "h"
-                sub_boxes = split_obb(pb, split_axis, num_splits=4, reverse=reverse_state)
+                slots = split_pillbox_to_slots(pb, split_axis, num_splits=4, reverse=reverse_state)
 
                 slots_data = {i: {"lid" : "Missing", "Has_pill": False} for i in range(4)}
                 for lid in all_lids:
-                    idx = lid_connect_split_box(lid['box'], sub_boxes)
+                    idx = lid_connect_slots(lid['box'], slots)
                     if idx != -1: slots_data[idx]['lid'] = lid['state']
 
-                for i, sub_box in enumerate(sub_boxes):
+                for i, slot in enumerate(slots):
                     current_lid_state = slots_data[i]['lid']
                     if current_lid_state == "Open":
-                        has_pill, mask = check_pill_in_split_box(pill_detect_frame, i, sub_box, HSV_LOWER, HSV_UPPER)
+                        has_pill, mask = check_pill_in_slots(pill_detect_frame, i, slot, HSV_LOWER, HSV_UPPER)
                         slots_data[i]['Has_pill'] = has_pill
                     else:
                         slots_data[i]['Has_pill'] = False
                     
                     if i == 3:
-                        cv2.putText(pill_detect_frame, "TAIL", (int(sub_box[0]), int(sub_box[1]-20)), 
+                        cv2.putText(pill_detect_frame, "TAIL", (int(slot[0]), int(slot[1]-20)), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-                    draw_slot_states(pill_detect_frame, sub_box, i, slots_data[i])
+                    draw_slots_state(pill_detect_frame, slot, i, slots_data[i])
 
-            single_grid_status(
+            every_slots_state(
                     frame=pill_detect_frame, 
                     current_slots_data=slots_data, 
                     tracker=same_time_tracker, 
