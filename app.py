@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, date
 import numpy as np
 from flask import Flask, render_template, Response, jsonify
 
-from alotdef import (
+from defs import (
     get_target_obb, 
     split_obb, 
     lid_connect_split_box, 
