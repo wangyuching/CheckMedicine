@@ -32,23 +32,36 @@ def get_target_obb_cls(results, target_cls):
 
 
 def pillbox_head_tail(bedtime_word, pill_box):
+
+    如果沒偵測到睡前文字，回傳 False
     if not bedtime_word:
         return False
     
     px, py, pw, ph, pr = pill_box
+        分離藥盒的座標與角度資訊
     bx, by, bw, bh, br = bedtime_word[0]
+        取得睡前文字的座標資訊
 
-    if pw > ph: #horizontal
+        根據藥盒長寬比，判斷藥盒是橫放 (pw > ph) 還是直放
+    if pw > ph: 橫放。
         axis_vec = np.array([np.cos(pr), np.sin(pr)])
-    else: #vertical
+            計算藥盒主軸（寬度方向）的單位方向向量。
+    else: 直放
         axis_vec = np.array([-np.sin(pr), np.cos(pr)])
+            計算藥盒主軸（高度方向）的單位方向向量
 
     target_vec = np.array([bx - px, by - py])
+        建立一個從「藥盒中心」指向「睡前文字中心」的向量
 
     projection = np.dot(target_vec, axis_vec)
+        計算兩個向量的內積（點積），這代表睡前文字在藥盒主軸上的投影位置
 
     return True if projection < 0 else False
-
+        如果投影值(內積)小於 0，代表文字在主軸的負半軸，回傳 True；否則回傳 False
+        內積 > 0（正數）：代表兩個向量的夾角小於 90 度（朝向同一個大方向）。
+                文字位於主軸正方向的那一端（Tail）。
+        內積 < 0（負數）：代表兩個向量的夾角大於 90 度（朝向相反方向）。
+                文字位於主軸反方向的那一端（Head）。
 
 
 def split_pillbox_to_slots(obb_xywhr, axis='w', num_splits=4, reverse=False):
@@ -83,7 +96,7 @@ def split_pillbox_to_slots(obb_xywhr, axis='w', num_splits=4, reverse=False):
 
         計算出每個小格子的中心點座標。
     for step in steps:
-        # 根據切分方向（沿著寬 w 或 高 h），計算小格子相對於大藥盒中心的位移量(沒旋轉)
+        # 根據切分方向（沿著寬 w 或 高 h），計算小格子相對於藥盒中心的位移量(沒旋轉)
         if axis == 'w':
             dx, dy = step * w, 0
                 沿著寬度方向位移
