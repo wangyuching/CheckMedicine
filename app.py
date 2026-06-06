@@ -98,12 +98,12 @@ def insert_status_to_db(current_slots_data):
             time_attr = f"{slot_key}_time"
 
             if hasattr(record, status_attr) and getattr(record, status_attr) != 'Checked':
-                target_grid_idx = MEAL_TO_GRID_INDEX.get(slot_key)
+                target_slot_idx = MEAL_TO_GRID_INDEX.get(slot_key)
                 
-                if target_grid_idx is not None and target_grid_idx in current_slots_data:
-                    grid_data = current_slots_data[target_grid_idx]
+                if target_slot_idx is not None and target_slot_idx in current_slots_data:
+                    slot_data = current_slots_data[target_slot_idx]
                     
-                    if grid_data['lid'] == 'Open' and not grid_data['Has_pill']:
+                    if slot_data['lid'] == 'Open' and not slot_data['Has_pill']:
                         setattr(record, status_attr, 'Checked')
                         setattr(record, time_attr, now.strftime("%H:%M:%S"))
         lids = [current_slots_data[i]['lid'] for i in range(4)]
@@ -134,7 +134,10 @@ def cap_real_time():
     reverse_state = False
 
     same_time_tracker = {
-        "active_opens": [], "open_start_time": None, "missing_start_time": None, "triggered": False,
+        "active_opens": [], 
+        "open_start_time": None, 
+        "missing_start_time": None, 
+        "triggered": False,
     }
 
     while cap.isOpened():

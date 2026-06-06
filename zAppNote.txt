@@ -1,0 +1,394 @@
+db.init_app(app) 
+    將資料庫實例與 Flask 應用程式綁定
+with app.app_context():
+    db.create_all() 
+        在 Flask 的上下文環境中，自動建立所有尚未生成的資料表
+
+
+字典：定義早餐、午餐、晚餐的標準服藥時間範圍與中文名稱
+TIME_SLOTS = {
+    'breakfast': {'start': (7, 0), 'end': (8, 0), 'name': '早餐'},
+    'lunch': {'start': (12, 0), 'end': (13, 0), 'name': '午餐'},
+    'dinner': {'start': (17, 0), 'end': (18, 0), 'name': '晚餐'}
+}
+
+
+字典：定義早餐、午餐、晚餐的標準服藥時間範圍與中文名稱
+MEAL_TO_GRID_INDEX = {
+    'breakfast': 0,
+    'lunch': 1,
+    'dinner': 2
+}
+
+
+定義一個類別，用來儲存藥盒是否「離開畫面（不在場）」的系統狀態
+class SystemState:
+    def __init__(self):
+        self.is_absent = False
+            預設藥盒沒有離開畫面（在場）
+        self.absent_start_time = None
+            離開畫面的起始時間
+sys_state = SystemState() 
+    sys_state < 存放實例化全域狀態物件
+
+
+比對「當前系統時間」落在哪個餐別的時段，並區分為前 30 分鐘、時段1小時內、後 30 分鐘。
+def get_current_time_status():
+    now = datetime.now()
+        取得現在的精確系統時間
+
+        遍歷早、中、晚餐的設定
+    for key, slot in TIME_SLOTS.items():
+
+        利用今天的日期，結合設定的時、分，建立今天服藥的「開始時間」與「結束時間」物件
+        A:
+            now.date()：取得今天的日期。
+            datetime.min.time()：這是 Python 的內建常數，代表一天的開始，也就是 00:00:00。
+            datetime.combine(...)：把「今天的日期」和「午夜 12 點」組合起來。
+            結果：今天午夜的完整時間物件：2026-06-06 00:00:00。
+        B：
+            slot['start'][0] 取得設定的小時，slot['start'][1] 取得分鐘。
+            以 'breakfast' 為例，它對應的是 (7, 0)。
+            結果：建立了一個「7 小時 0 分鐘」的時間長度（timedelta）。
+        A+B：
+            把「今天的午夜 00:00」加上「7 小時」。
+            結果：2026-06-06 07:00:00 的 datetime 物件。
+        start_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['start'][0], minutes=slot['start'][1])
+        end_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['end'][0], minutes=slot['end'][1])
+        
+        before_30 = start_time - timedelta(minutes=30)
+            計算服藥前 30 分鐘的起點
+        after_30 = end_time + timedelta(minutes=30)
+            計算服藥後 30 分鐘的終點
+        
+        進行時間區間判定：
+        if before_30 <= now < start_time:
+            return key, 'before_30', slot['name']
+                回傳：餐別鍵、狀態為「前30分鐘」、中文名
+        elif start_time <= now <= end_time:
+            return key, 'in_slot', slot['name']  
+                回傳：餐別鍵、狀態為「時段內」、中文名
+        elif end_time < now <= after_30:
+            return key, 'after_30', slot['name'] 
+                回傳：餐別鍵、狀態為「後30分鐘」、中文名
+            
+    return None, 'outside', ''
+        如果都不符合，代表處於非服藥時段
+
+
+def get_db_record(today_str):
+    依據傳入的日期字串（例如 "2026-06-06"），至 CheckPills 資料表查詢當天的第一筆紀錄
+    return CheckPills.query.filter_by(dt=today_str).first()
+
+def create_default_daily_record(today_str):
+    建立一個全新的每日預設資料列
+    new_data = CheckPills(
+        dt=today_str,
+            設定日期
+        updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            設定更新時間
+        lid0="Close", lid1="Close", lid2="Close", lid3="Close",
+            預設 4 個格子的蓋子都是關閉的
+        has_pill0="Unknown", has_pill1="Unknown", has_pill2="Unknown", has_pill3="Unknown",
+            藥丸狀態預設未知
+        breakfast_status="Pending", lunch_status="Pending", dinner_status="Pending"
+            服藥狀態預設為「待處理」
+    )
+    try:
+        db.session.add(new_data)  
+            將新資料加入寫入佇列
+        db.session.commit()       
+            確認提交至資料庫
+    except Exception as e:
+        db.session.rollback()     
+            若發生錯誤則取消本次操作（回滾）
+        print(f"建立預設資料失敗: {e}")
+    return CheckPills.query.filter_by(dt=today_str).first()
+        成功建立後，將這筆紀錄重新查出並回傳
+
+def insert_status_to_db(current_slots_data):
+    with app.app_context(): 啟用 Flask 的 App 上下文，這樣才能安全地操作資料庫
+        now = datetime.now()
+        today_date = now.date()
+        dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        
+        record = get_db_record(today_date) 
+            尋找今天日期的資料庫紀錄
+        if not record:
+            record = create_default_daily_record(today_date)
+                找不到就建立一筆預設的
+
+        if not record:
+            print("無法取得或建立資料庫記錄。")
+            return
+            
+        slot_key, period_type, meal_name = get_current_time_status()
+            獲取當前時間時段狀態
+        
+        核心判斷：如果是「在服藥時段內」或「服藥後30分鐘內」
+        if slot_key and (period_type in ['in_slot', 'after_30']):
+            status_attr = f"{slot_key}_status" 
+                組合出欄位名稱，例如 "breakfast_status"
+            time_attr = f"{slot_key}_time"     
+                組合出時間欄位，例如 "breakfast_time"
+
+            如果該欄位存在，且目前的值「不是 Checked」（代表尚未確認服藥）
+                hasattr(has attribute)：檢查record裡面有無status_attr字串的變數，return True or False。
+                getattr(get attribute)：透過變數status_attr字串，去拿取record裡該變數目前的值。
+            if hasattr(record, status_attr) and getattr(record, status_attr) != 'Checked':
+
+                target_slot_idx = MEAL_TO_GRID_INDEX.get(slot_key) 
+                    獲取該餐別對應的格子編號（如早餐=0）
+                
+                if target_slot_idx is not None and target_slot_idx in current_slots_data:
+                    slot_data = current_slots_data[target_slot_idx] 
+                        取得當前該格子的視覺偵測數據
+                    
+                    【服藥成功條件】：如果對應的格子蓋子是打開的（Open），且裡面已經沒有藥丸了（not Has_pill）
+                    if slot_data['lid'] == 'Open' and not slot_data['Has_pill']:
+                            setattr(set attribute)：透過變數status_attr/time_attr字串，去動態修改record裡該變數目前的值。
+                        setattr(record, status_attr, 'Checked') 
+                            將該餐別服藥狀態更新為 'Checked' (已服藥)
+                        setattr(record, time_attr, now.strftime("%H:%M:%S")) 
+                            記錄精確服藥時間
+
+            整理當前 4 個格子的蓋子狀態列表
+        lids = [current_slots_data[i]['lid'] for i in range(4)]
+            
+            整理當前 4 個格子的藥丸狀態列表：如果蓋子是關的，狀態設為 Unknown（因為看不到內部）；如果是開的，則依據偵測結果設為 Full 或 Empty
+        has_pills = [
+            "Unknown" if current_slots_data[i]['lid'] == "Close" else
+            ("Full" if current_slots_data[i]['Has_pill'] else "Empty")
+            for i in range(4)
+        ]
+        
+        try:
+            透過迴圈，動態將動態資料寫入資料庫的欄位（如 lid0~lid3, has_pill0~has_pill3）
+            for i in range(4):
+                    setattr(set attribute)：透過插補字串 f"lid{i}/ f"has_pill{i}"，去動態修改record裡該變數目前的值。
+                setattr(record, f"lid{i}", lids[i])
+                setattr(record, f"has_pill{i}", has_pills[i])
+            
+            record.updated_at = dt_str
+                更新最後更新時間
+            db.session.commit()        
+                提交並儲存至 MySQL
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"資料庫寫入失敗: {e}")
+
+
+model = YOLO("best.pt", task="obb") 
+    載入訓練好的 best.pt 旋轉矩形偵測模型
+cap = cv2.VideoCapture(1)
+    開啟編號為 1 的外部攝影機（若用內建鏡頭通常是 0）
+
+def cap_real_time():
+    
+    設定檢測藥丸所使用的 HSV 色彩範圍（此處設定為高亮或白色的範圍）
+    HSV_LOWER = np.array([0, 0, 255])
+    HSV_UPPER = np.array([179, 255, 255])
+
+    reverse_state = False
+        預設藥盒方向不需反轉
+
+    初始化狀態追蹤器
+    same_time_tracker = {
+        "active_opens": [], 
+        "open_start_time": None, 
+        "missing_start_time": None, 
+        "triggered": False,
+    }
+
+    while cap.isOpened(): 
+        當攝影機開啟時，進行無限迴圈讀取
+
+        ok, frame = cap.read()
+            讀取最新一幀畫面
+        if (not ok) | (frame is None): break 
+            如果讀取失敗則中斷迴圈
+        
+        frame = cv2.resize(frame, (640, 480)) 
+            將畫面強制調整為 640x480 解析度以加快 YOLO 推理速度
+        results = model(frame, verbose=False) 
+            進行模型預測，不印出偵測日誌
+        pill_detect_frame = frame.copy()
+            複製一份畫面，專門用來繪製視覺化圖形與文字
+
+            從 OBB 偵測結果中篩選出：睡前文字(cls 0)、藥盒本體(cls 4)
+        bedtime_word = get_target_obb_cls(results, target_cls=0)
+        pill_boxes = get_target_obb_cls(results, target_cls=4)
+        
+            【分支 1】：畫面中有偵測到藥盒
+        if pill_boxes:
+            sys_state.is_absent = False  
+                系統狀態設定為「藥盒在場」
+            sys_state.absent_start_time = None 
+                清空不在場計時
+
+                篩選出：關閉的蓋子(cls 1)、開啟的蓋子(cls 3)
+            lid_close = get_target_obb_cls(results, target_cls=1)
+            lid_open = get_target_obb_cls(results, target_cls=3)
+            all_lids = []
+            for ls in lid_close: all_lids.append({'box': ls, 'state': 'Close'})
+            for lo in lid_open: all_lids.append({'box': lo, 'state': 'Open'})
+
+            for pb in pill_boxes:
+                    如果有偵測到睡前文字，利用它來判斷藥盒方向是否需要反轉
+                if bedtime_word:
+                    reverse_state = pillbox_head_tail(bedtime_word, pb)
+
+                    依據藥盒長寬比例，決定要沿著 w（寬）還是 h（高）進行 4 等分切割
+                w, h = pb[2], pb[3]
+                split_axis = "w" if w > h else "h"
+                slots = split_pillbox_to_slots(pb, split_axis, num_splits=4, reverse=reverse_state)
+
+                    初始化當前 4 個格子的暫存數據結構
+                slots_data = {i: {"lid" : "Missing", "Has_pill": False} for i in range(4)}
+                
+                    將偵測到的所有蓋子，透過距離演算法配對到對應的格子
+                for lid in all_lids:
+                    idx = lid_connect_slots(lid['box'], slots)
+                    if idx != -1: slots_data[idx]['lid'] = lid['state']
+
+                    遍歷這 4 個格子，進行藥丸綠色/白色等 HSV 檢測
+                for i, slot in enumerate(slots):
+                    current_lid_state = slots_data[i]['lid']
+
+                        只有在蓋子是「開啟」的狀態下，才去檢查裡面有沒有藥丸
+                    if current_lid_state == "Open": 
+                        has_pill, mask = check_pill_in_slots(pill_detect_frame, i, slot, HSV_LOWER, HSV_UPPER)
+                        slots_data[i]['Has_pill'] = has_pill
+                    else:
+                        slots_data[i]['Has_pill'] = False 
+                            蓋子沒開就預設沒偵測到藥丸
+
+                        如果是最後一格，在畫面上標註 "TAIL"（尾端）字樣方便排錯
+                    if i == 3: 
+                        cv2.putText(pill_detect_frame, "TAIL", (int(slot[0]), int(slot[1]-20)), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+                    
+                        在畫面上為此格子畫出方形線條與狀態文字
+                    draw_slots_state(pill_detect_frame, slot, i, slots_data[i])
+
+                將整合好的即時格子數據送入狀態機，若開蓋狀態持續超過 5.0 秒，即觸發 insert_status_to_db 寫入資料庫
+            every_slots_state(
+                    frame=pill_detect_frame, 
+                    current_slots_data=slots_data, 
+                    tracker=same_time_tracker, 
+                    duration=5.0, 
+                    missing=5.0, 
+                    db_insert=insert_status_to_db
+                )        
+        
+            【分支 2】：畫面中沒有藥盒（藥盒被拿走了）
+        else:
+            sys_state.is_absent = True 
+                系統狀態改為「藥盒離開」
+            sys_state.absent_start_time = t.time()
+                 記錄離開的起點時間
+
+                建立一個全部格子都是 "Missing" (遺失) 狀態的結構
+            absent_slots_data = {i: {"lid" : "Missing", "Has_pill": False} for i in range(4)}
+                直接更新資料庫，告訴資料庫目前藥盒不見了
+            insert_status_to_db(absent_slots_data)
+
+            將處理繪製完畢的影像（OpenCV 的 BGR 格式）編碼壓縮成 JPEG 格式，並限制運算品質為 50 以利網路傳輸
+        ret, jpeg = cv2.imencode('.jpg', pill_detect_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+        
+            利用 yield 配合 MJPEG 技術，將圖片以位元組（Bytes）形式不間斷地吐給網頁瀏覽器
+        yield(b'--pill_detect_frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+
+    cap.release() 
+        若離開迴圈，則釋放攝影機資源
+
+
+@app.route('/')
+def index():
+    return render_template('index.html') 
+        當使用者瀏覽網頁首頁時，渲染並顯示 index.html 的 HTML 頁面
+
+@app.route('/api/status')
+def api_status():
+    now = datetime.now()        
+    today_str = now.date()
+
+    record = get_db_record(today_str) 
+        讀取今日資料庫紀錄
+
+        如果今日日期沒有紀錄，新增一筆預設紀錄。
+    if not record:
+        record = create_default_daily_record(today_str)
+    
+    初始化要回傳給前端網頁的 JSON 資料結構
+    status_data = {
+        'alert_message': '',
+        'breakfast': {'status': 'Pending', 'time': ''},
+        'lunch': {'status': 'Pending', 'time': ''},
+        'dinner': {'status': 'Pending', 'time': ''}
+    }
+    
+    is_current_meal_checked = False
+    slot_key, period_type, meal_name = get_current_time_status() 
+        取得當前的時間段資訊
+    
+        遍歷早、中、晚餐，進行綜合狀態比對
+    for meal_key, slot in TIME_SLOTS.items():
+        db_status = getattr(record, f"{meal_key}_status", 'Pending') 
+            取得資料庫中的服藥狀態
+        db_time = getattr(record, f"{meal_key}_time", '')
+            取得服藥時間
+        
+        if db_status == 'Checked':
+            status_data[meal_key]['status'] = 'Checked'
+            status_data[meal_key]['time'] = db_time
+            if meal_key == slot_key:
+                is_current_meal_checked = True 
+                    如果正在進行的時段剛好就是已經吃過藥的時段，記為 True
+        else:
+            end_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['end'][0], minutes=slot['end'][1])
+            if now > (end_time + timedelta(minutes=30)):
+                status_data[meal_key]['status'] = 'Missed'
+                    如果「現在時間」已經超過了該餐別結束時間加 30 分鐘判定為：已經「錯過/忘記」吃這一餐的藥了
+            else:
+                status_data[meal_key]['status'] = 'Pending'
+                    如果「現在時間」還沒超過該餐別結束時間加 30 分鐘判定為：時間還沒過完，依然維持「待服藥」
+        
+    # --- 警告訊息提示詞邏輯（核心 UI 互動） ---
+    if sys_state.is_absent: # 【狀況一：藥盒不在畫面上】
+        if period_type == 'before_30':
+            alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。[A]"
+        elif period_type in ['in_slot', 'after_30']:
+            if is_current_meal_checked:
+                alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子打開、藥盒放置在畫面中。[A]"
+            else:
+                alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子打開、藥盒放置在畫面中[A]。"
+        else:
+            alert_msg = "還沒到服用藥的時段，請放下藥盒，並放置於畫面中。[A]"
+
+    else: # 【狀況二：藥盒在畫面上】
+        if period_type == 'before_30':
+            alert_msg = f"準備服用{meal_name}時段的藥。"
+        elif period_type in ['in_slot', 'after_30']:
+            if is_current_meal_checked:
+                alert_msg = f"已服用完{meal_name}時段的藥。請將蓋子打開、藥盒放置在畫面中。"
+            else:
+                alert_msg = f"請服用{meal_name}時段的藥。完成後請將蓋子打開、藥盒放置在畫面中。"
+        else:
+            alert_msg = "目前非服用藥的時段。"
+
+    status_data['alert_message'] = alert_msg 
+        填入決定好的警告文字
+    return jsonify(status_data) 
+        將字典物件打包成網頁標準的 JSON 格式並回傳給前端
+
+@app.route('/cap_in_html')
+def cap_in_html():
+        當 HTML 網頁中的 <img src="/cap_in_html"> 標籤請求此網址時，
+        透過 Response 元件將 cap_real_time() 這個無窮影像生成器以 multipart 串流格式即時推送給前端
+    return Response(cap_real_time(), mimetype='multipart/x-mixed-replace; boundary=pill_detect_frame')
+
+if __name__ == '__main__':
+        啟動應用程式伺服器，設定通訊埠為 1010，本機內部 IP 127.0.0.1。
+    app.run(debug=False, host='127.0.0.1', port=1010)
