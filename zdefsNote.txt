@@ -237,37 +237,59 @@ def draw_slots_state(frame, box, slot_idx, slot_data):
             在原標籤下方 15 像素處，繪製藥丸狀態（Full / Empty）
 
 def every_slots_state(frame, current_slots_data, tracker, duration, missing, db_insert):
+        
+        找出當前畫面上所有蓋子狀態為 "Open" 的格子索引列表
     current_opens = [
         idx for idx, 
         data in current_slots_data.items() 
         if data['lid'] == "Open"
     ]
 
+        當前有格子是被打開的
     if len(current_opens) > 0:
         tracker['missing_start_time'] = None
+            重置「消失計時器」，因為藥盒目前在畫面上且有開蓋
 
+            如果「當前打開的格子」與「追蹤器記錄中打開的格子」不一致（代表開啟狀態改變了）
         if current_opens != tracker['active_opens']:
             tracker['active_opens'] = current_opens
+                更新追蹤器中處於開啟狀態的格子列表
             tracker['open_start_time'] = t.time()
+                重新開始計算開啟的起點時間
             tracker['triggered'] = False
+                重置觸發旗標，表示這個新狀態尚未寫入資料庫
 
-        else:
+        else:如果開啟的格子與上次檢查完全相同（狀態穩定維持中）
+                當有記錄開始時間，且該狀態還沒觸發過資料庫寫入時
             if tracker['open_start_time'] is not None and not tracker['triggered']:
                 elapsed_time = t.time() - tracker['open_start_time']
+                    計算已經持續開啟了多少秒
 
+                    如果持續開啟的時間超過了設定的閾值（duration）
                 if elapsed_time > duration:
                     db_insert(current_slots_data)
+                        將當前的藥盒格子的詳細狀態寫入資料庫
                     tracker['triggered'] = True
+                        將旗標設為 True，防止在同一次開蓋事件中重複寫入資料庫
     
-    else:
+    else:當前畫面上沒有任何格子被打開（可能全部關閉，或藥盒離開畫面沒被偵測到）
+            如果在此之前，曾經有格子是打開的
         if tracker['open_start_time'] is not None:
             if tracker['missing_start_time'] is None:
                 tracker['missing_start_time'] = t.time()
+                    開始記錄「消失/關閉」的起點時間（容錯計時開始
 
             lost_duration = t.time() - tracker['missing_start_time']
+                計算消失/關閉持續了多久
 
+                如果消失或關閉的時間超過了容錯上限（missing）
             if lost_duration > missing:
+                全面重置追蹤器的所有狀態，宣告這一次的開蓋事件正式結束
                 tracker['active_opens'] = []
+                    目將追蹤器中「目前處於開啟狀態的格子列表」清空
                 tracker['open_start_time'] = None
+                    將「開蓋起始時間」設定為空值
                 tracker['missing_start_time'] = None
+                    將「藥盒消失（或全關閉）的起始時間」設定為空值
                 tracker['triggered'] = False
+                    將「是否已觸發資料庫寫入」的旗標（Flag）重新設為「否（False）」。
