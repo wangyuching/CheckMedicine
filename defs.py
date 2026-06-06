@@ -19,21 +19,6 @@ def get_target_obb(results, target_cls):
             
     return filtered_boxes
 
-def draw_target_obb(image, boxes, color, thickness=2):
-    output_img = image.copy()
-    for box in boxes:
-        x, y, w, h, r = box
-
-        angle = np.degrees(r)
-        rect = ((x, y), (w, h), angle)
-
-        points = cv2.boxPoints(rect)
-        points = np.int32(points)
-    
-        cv2.polylines(output_img, [points], isClosed=True, color=color, thickness=thickness)
-
-    return output_img
-
 def split_obb(obb_xywhr, axis='w', num_splits=4, reverse=False):
     xc, yc, w, h, r = obb_xywhr
     
