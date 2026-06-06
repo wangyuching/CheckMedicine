@@ -1,0 +1,221 @@
+import cv2
+    影像處理、繪圖、矩陣旋轉與影像擷取
+import numpy as np
+    矩陣運算、三角函數與數值計算
+import time as t
+    計算時間間隔與計時
+
+def get_target_obb_cls(results, target_cls):
+    filtered_boxes = []
+        初始化一個空列表，用來存放篩選後的框
+
+    for r in results:
+        遍歷模型回傳的每一個偵測結果
+        classes = r.obb.cls
+            取得所有偵測到物件的class ID
+        boxes = r.obb.xywhr #[center_x, center_y, width, height, rotation_radians]
+            取得所有物件的旋轉框(obb)座標，格式為 [中心x, 中心y, 寬, 高, 旋轉弧度]
+
+        mask = (classes == target_cls)
+            建立布林遮罩 (Boolean Mask)，當類別等於目標類別時為 True，否則為 False
+        target_boxes = boxes[mask]
+            利用遮罩，只保留符合目標類別的旋轉框
+        target_boxes_np = target_boxes.cpu().numpy()
+            將資料移至 CPU 記憶體並轉換成 NumPy 陣列格式
+        
+        for box in target_boxes_np:
+            filtered_boxes.append(box)
+                將每一個符合條件的框加入到結果列表中
+            
+    return filtered_boxes
+        回傳所有篩選出來的旋轉框列表
+
+
+def pillbox_head_tail(bedtime_word, pill_box):
+    if not bedtime_word:
+        return False
+    
+    px, py, pw, ph, pr = pill_box
+    bx, by, bw, bh, br = bedtime_word[0]
+
+    if pw > ph: #horizontal
+        axis_vec = np.array([np.cos(pr), np.sin(pr)])
+    else: #vertical
+        axis_vec = np.array([-np.sin(pr), np.cos(pr)])
+
+    target_vec = np.array([bx - px, by - py])
+
+    projection = np.dot(target_vec, axis_vec)
+
+    return True if projection < 0 else False
+
+
+
+def split_pillbox_to_slots(obb_xywhr, axis='w', num_splits=4, reverse=False):
+    xc, yc, w, h, r = obb_xywhr
+        xc, yc 為藥盒中心點；w, h 為寬高；r 為旋轉弧度 (Radians)
+
+        計算切分後，每一個小格子的新寬度或新高度
+    new_w = w / num_splits if axis == 'w' else w
+        如果切分軸向 axis 是 'w'（代表要水平切分寬度）：
+        新的寬度 new_w 就會是原本的寬度 w 除以(float)切分份數 num_splits。
+        否則（例如 axis 是 'h' 或者是其他值）：
+        寬度保持不變，new_w 直接等於原本的寬度 w。
+        
+    new_h = h / num_splits if axis == 'h' else h    
+        如果切分軸向 axis 是 'h'（代表要垂直切分高度）：
+        新的高度 new_h 就會是原本的高度 h 除以(float)切分份數 num_splits。
+        否則（例如 axis 是 'w'）：
+        高度保持不變，new_h 直接等於原本的高度 h。
+    
+    slots = []
+        初始化存放各個小格子座標的列表
+    
+        產生num_splits份數得均勻分佈的小區塊中心點座標的比例值。例如分成 4 份，會產生 [-0.375, -0.125, 0.125, 0.375] 的相對位置
+    steps = np.linspace(-0.5 + 1/(2*num_splits), 0.5 - 1/(2*num_splits), num_splits)
+        np.linspace(start, stop, num) 在指定的 start 到 stop 之間，均勻生成 num 個數字。
+        -0.5：最左側的邊界。+1/(2*num_splits)：座標「往右前進」到第一格中心。
+        0.5：最右側的邊界。-1/(2*num_splits)：座標「往左後退」到最後一格中心。
+
+    if reverse:
+        steps = steps[::-1]
+            如果設定反向（reverse=True），就將格子的順序倒序排列（例如從右到左，或從下到上）
+
+        計算出每個小格子的中心點座標。
+    for step in steps:
+        # 根據切分方向（沿著寬 w 或 高 h），計算小格子相對於大藥盒中心的位移量(沒旋轉)
+        if axis == 'w':
+            dx, dy = step * w, 0
+                沿著寬度方向位移
+        else:
+            dx, dy = 0, step * h
+                沿著高度方向位移
+            
+            【旋轉矩陣】考量到藥盒本身有旋轉角度 r，把藥盒的中心點 (xc, yc) 當作原點，
+                        加上旋轉修正後的位移量，映射回影像的絕對座標 (new_x, new_y)。
+        new_x = xc + dx * np.cos(r) - dy * np.sin(r)
+        new_y = yc + dx * np.sin(r) + dy * np.cos(r)
+        
+        slots.append([new_x, new_y, new_w, new_h, r])
+            將計算好的小格子座標 [新中心x, 新中心y, 新寬, 新高, 旋轉弧度] 存入列表
+        
+    return slots
+        回傳所有切分好的小格子座標列表
+
+        
+    透過計算歐幾里得距離(兩點距離公式)，找出這個蓋子離哪一個格子最近。
+def lid_connect_slots(lid_box, slots):
+    lx, ly = lid_box[0], lid_box[1]
+        取得藥盒蓋子的中心點座標 (lx, ly)
+    min_dist = float('inf')
+        初始化最小距離為正無窮大
+    best_idx = -1
+        初始化最匹配的小格子索引為 -1
+
+    for idx, s_box in enumerate(slots):
+        sx, sy = s_box[0], s_box[1]
+            取得當前格子的中心點座標 (sx, sy)
+        dist = np.sqrt((lx - sx)**2 + (ly - sy)**2)
+            計算蓋子中心與格子中心之間的直線距離（歐XXX距離）
+        if dist < min_dist:
+            如果當前計算的距離比之前的最小值還要小
+            min_dist = dist
+                更新最小值
+            best_idx = idx
+                紀錄目前最接近的小格子索引值
+
+    return best_idx
+        回傳距離最近的小格子索引
+
+
+def check_pill_in_slots(frame, i, box, hsv_lower, hsv_upper, threshold=0.1):
+    xc, yc, w, h, r = box
+    M = cv2.getRotationMatrix2D((xc, yc), np.degrees(r), 1)
+    rotated = cv2.warpAffine(frame, M, (frame.shape[1], frame.shape[0]))
+    base_crop = cv2.getRectSubPix(rotated, (int(w), int(h)), (xc, yc))
+    h_crop, w_crop = base_crop.shape[:2]
+    pad_w = int(w_crop * 0.05)
+    pad_h = int(h_crop * 0.05)
+    crop = base_crop[pad_h:-pad_h, pad_w:-pad_w] # 去除邊緣 5% 的區域
+
+    if (crop is None) or (crop.size == 0):
+        return False, np.zeros((10, 10), dtype=np.uint8)
+    
+
+    hsv_img = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    base_mask = cv2.inRange(hsv_img, hsv_lower, hsv_upper)
+
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(base_mask, cv2.MORPH_CLOSE, kernel)
+
+    white_pixels = cv2.countNonZero(mask)
+    total_pixels = w * h
+    ratio = white_pixels / total_pixels
+
+    has_pill = ratio> threshold
+    # print(f"Box {i}: Pill Ratio = {ratio:.2%}")
+
+    return has_pill, mask
+
+def draw_slots_state(frame, box, slot_idx, slot_data):
+    x, y,w, h, r = box
+    lid_state = slot_data['lid']
+    pill_state = "Full" if slot_data['Has_pill'] else "Empty"
+
+    if lid_state == "Open" and not slot_data["Has_pill"]:
+        color = (0, 255, 0)  # Green for open & empty
+    elif lid_state == "Open" and slot_data["Has_pill"]:
+        color = (0, 0, 255)  # Red for open & full
+    elif lid_state == "Close":
+        color = (255, 0, 0)  # Blue for closed lid
+    else:
+        color = (100, 100, 100)  # Gray for missing lid
+
+    rect = ((x, y), (w, h), np.degrees(r))
+    points = cv2.boxPoints(rect)
+    points = np.int32(points)
+        
+    cv2.polylines(frame, [points], isClosed=True, color=color, thickness=2)
+
+    label = f"#{slot_idx} {lid_state}"
+    cv2.putText(frame, label, (int(x) - 30, int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+    if lid_state == "Open":
+        pill_label = f"{pill_state}"
+        cv2.putText(frame, pill_label, (int(x) - 30, int(y) + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)    
+
+def every_slots_state(frame, current_slots_data, tracker, duration, missing, db_insert):
+    current_opens = [
+        idx for idx, 
+        data in current_slots_data.items() 
+        if data['lid'] == "Open"
+    ]
+
+    if len(current_opens) > 0:
+        tracker['missing_start_time'] = None
+
+        if current_opens != tracker['active_opens']:
+            tracker['active_opens'] = current_opens
+            tracker['open_start_time'] = t.time()
+            tracker['triggered'] = False
+
+        else:
+            if tracker['open_start_time'] is not None and not tracker['triggered']:
+                elapsed_time = t.time() - tracker['open_start_time']
+
+                if elapsed_time > duration:
+                    db_insert(current_slots_data)
+                    tracker['triggered'] = True
+    
+    else:
+        if tracker['open_start_time'] is not None:
+            if tracker['missing_start_time'] is None:
+                tracker['missing_start_time'] = t.time()
+
+            lost_duration = t.time() - tracker['missing_start_time']
+
+            if lost_duration > missing:
+                tracker['active_opens'] = []
+                tracker['open_start_time'] = None
+                tracker['missing_start_time'] = None
+                tracker['triggered'] = False

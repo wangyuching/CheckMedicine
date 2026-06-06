@@ -18,6 +18,25 @@ def get_target_obb_cls(results, target_cls):
             
     return filtered_boxes
 
+def pillbox_head_tail(bedtime_word, pill_box):
+    if not bedtime_word:
+        return False
+    
+    px, py, pw, ph, pr = pill_box
+    bx, by, bw, bh, br = bedtime_word[0]
+
+    if pw > ph: #horizontal
+        axis_vec = np.array([np.cos(pr), np.sin(pr)])
+    else: #vertical
+        axis_vec = np.array([-np.sin(pr), np.cos(pr)])
+
+    target_vec = np.array([bx - px, by - py])
+
+    projection = np.dot(target_vec, axis_vec)
+
+    return True if projection < 0 else False
+
+
 def split_pillbox_to_slots(obb_xywhr, axis='w', num_splits=4, reverse=False):
     xc, yc, w, h, r = obb_xywhr
     
@@ -44,12 +63,12 @@ def split_pillbox_to_slots(obb_xywhr, axis='w', num_splits=4, reverse=False):
         
     return slots
 
-def lid_connect_slots(lid_box, sub_boxes):
+def lid_connect_slots(lid_box, slots):
     lx, ly = lid_box[0], lid_box[1]
     min_dist = float('inf')
     best_idx = -1
 
-    for idx, s_box in enumerate(sub_boxes):
+    for idx, s_box in enumerate(slots):
         sx, sy = s_box[0], s_box[1]
         dist = np.sqrt((lx - sx)**2 + (ly - sy)**2)
         if dist < min_dist:
@@ -57,25 +76,6 @@ def lid_connect_slots(lid_box, sub_boxes):
             best_idx = idx
 
     return best_idx
-
-def pillbox_head_tail(bedtime_word, pill_box):
-    if not bedtime_word:
-        return False
-    
-    px, py, pw, ph, pr = pill_box
-    bx, by, bw, bh, br = bedtime_word[0]
-
-    if pw > ph: #horizontal
-        axis_vec = np.array([np.cos(pr), np.sin(pr)])
-    else: #vertical
-        axis_vec = np.array([-np.sin(pr), np.cos(pr)])
-
-    target_vec = np.array([bx - px, by - py])
-
-    projection = np.dot(target_vec, axis_vec)
-
-    return True if projection < 0 else False
-
 
 def check_pill_in_slots(frame, i, box, hsv_lower, hsv_upper, threshold=0.1):
     xc, yc, w, h, r = box
