@@ -7,9 +7,9 @@ from flask import Flask, render_template, Response, jsonify
 
 from defs import (
     get_target_obb_cls, 
+    pillbox_head_tail, 
     split_pillbox_to_slots, 
     lid_connect_slots, 
-    pillbox_head_tail, 
     check_pill_in_slots,
     draw_slots_state,
     every_slots_state
