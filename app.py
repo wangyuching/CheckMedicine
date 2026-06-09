@@ -25,7 +25,7 @@ with app.app_context():
     db.create_all()
 
 TIME_SLOTS = {
-    'breakfast': {'start': (7, 0), 'end': (8, 0), 'name': '早餐'},
+    'breakfast': {'start': (7, 0), 'end': (7, 1), 'name': '早餐'},
     'lunch': {'start': (12, 0), 'end': (13, 0), 'name': '午餐'},
     'dinner': {'start': (17, 0), 'end': (18, 0), 'name': '晚餐'}
 }
@@ -47,8 +47,8 @@ def get_current_time_status():
         start_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['start'][0], minutes=slot['start'][1])
         end_time = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=slot['end'][0], minutes=slot['end'][1])
         
-        before_30 = start_time - timedelta(minutes=30)
-        after_30 = end_time + timedelta(minutes=30)
+        before_30 = start_time - timedelta(seconds=30)
+        after_30 = end_time + timedelta(seconds=30)
         
         if before_30 <= now < start_time:
             return key, 'before_30', slot['name']

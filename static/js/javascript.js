@@ -19,9 +19,13 @@ let blockedAudio = "";
 let hasShownSuccessAlert = false;
 
 function getAudioSrcByMessage(msg) {
-    if (!msg) return "";
+    if (!msg) return ""
 
-    if (msg.includes("[A]}")) {
+    if (msg.includes("目前") || msg.includes("中斷")) {
+        return "";
+    }
+
+    if (msg.includes("[A]")) {
         if (msg.includes("請服用") && msg.includes("時段的藥")) {
             if (msg.includes("早餐")) return "/static/audio/02.mp3";
             if (msg.includes("午餐")) return "/static/audio/03.mp3";
@@ -57,14 +61,23 @@ function getAudioSrcByMessage(msg) {
         if (msg.includes("晚餐")) return "/static/audio/10.mp3";
     }
 
-    return "";
+    return null;
 }
 
 function playStatusAudio(audioSrc) {
-    if (!audioSrc) return;
-
     if (loopAudioTimer) {
         clearInterval(loopAudioTimer);
+        loopAudioTimer = null;
+    }
+
+    if (!audioSrc) {
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+        }
+        if(nextAudioTimeout) clearTimeout(nextAudioTimeout);
+        
+        return;
     }
 
     const startNewAudio = () => {
@@ -85,7 +98,7 @@ function playStatusAudio(audioSrc) {
                 currentAudio.currentTime = 0;
                 currentAudio.play().catch(e => console.log(e));
             }
-        }, 300000);
+        }, 10000);
     };
 
     if (currentAudio && !currentAudio.paused) {
