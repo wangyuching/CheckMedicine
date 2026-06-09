@@ -75,13 +75,20 @@ function playStatusAudio(audioSrc) {
             currentAudio.pause();
             currentAudio = null;
         }
-        if(nextAudioTimeout) clearTimeout(nextAudioTimeout);
-        
+        if (nextAudioTimeout) clearTimeout(nextAudioTimeout);
+
         return;
     }
 
     const startNewAudio = () => {
         currentAudio = new Audio(audioSrc);
+
+        currentAudio.onended = function () {
+            loopAudioTimer = setTimeout(() => {
+                startNewAudio();
+            }, 5000);
+        };
+
         currentAudio.play()
             .then(() => {
                 console.log("語音播放成功！");
@@ -91,14 +98,8 @@ function playStatusAudio(audioSrc) {
                 console.log("瀏覽器阻擋自動播放，需要使用者點擊網頁任意地方：", err);
 
                 blockedAudio = audioSrc;
+                loopAudioTimer = setTimeout(startNewAudio, 5000);
             });
-
-        loopAudioTimer = setInterval(() => {
-            if (currentAudio) {
-                currentAudio.currentTime = 0;
-                currentAudio.play().catch(e => console.log(e));
-            }
-        }, 10000);
     };
 
     if (currentAudio && !currentAudio.paused) {
