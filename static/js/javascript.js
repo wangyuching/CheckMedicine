@@ -19,9 +19,13 @@ let blockedAudio = "";
 let hasShownSuccessAlert = false;
 
 function getAudioSrcByMessage(msg) {
-    if (!msg) return "";
+    if (!msg) return ""
 
-    if (msg.includes("[A]}")) {
+    if (msg.includes("目前") || msg.includes("中斷")) {
+        return "";
+    }
+
+    if (msg.includes("[A]")) {
         if (msg.includes("請服用") && msg.includes("時段的藥")) {
             if (msg.includes("早餐")) return "/static/audio/02.mp3";
             if (msg.includes("午餐")) return "/static/audio/03.mp3";
@@ -57,18 +61,42 @@ function getAudioSrcByMessage(msg) {
         if (msg.includes("晚餐")) return "/static/audio/10.mp3";
     }
 
-    return "";
+    return null;
 }
 
 function playStatusAudio(audioSrc) {
-    if (!audioSrc) return;
-
     if (loopAudioTimer) {
         clearInterval(loopAudioTimer);
+        loopAudioTimer = null;
     }
+
+    if (!audioSrc) {
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+        }
+        if (nextAudioTimeout) clearTimeout(nextAudioTimeout);
+
+        return;
+    }
+
+    const shoulsLoop = !(audioSrc.includes("05.mp3") || audioSrc.includes("06.mp3") || audioSrc.includes("07.mp3"));
 
     const startNewAudio = () => {
         currentAudio = new Audio(audioSrc);
+
+        if (shoulsLoop) {
+            currentAudio.onended = function () {
+                loopAudioTimer = setTimeout(() => {
+                    startNewAudio();
+                }, 5000);
+            };
+        } else {
+            currentAudio.onended = function () {
+                currentAudio = null;
+            };
+        }
+
         currentAudio.play()
             .then(() => {
                 console.log("語音播放成功！");
@@ -78,14 +106,8 @@ function playStatusAudio(audioSrc) {
                 console.log("瀏覽器阻擋自動播放，需要使用者點擊網頁任意地方：", err);
 
                 blockedAudio = audioSrc;
+                loopAudioTimer = setTimeout(startNewAudio, 5000);
             });
-
-        loopAudioTimer = setInterval(() => {
-            if (currentAudio) {
-                currentAudio.currentTime = 0;
-                currentAudio.play().catch(e => console.log(e));
-            }
-        }, 300000);
     };
 
     if (currentAudio && !currentAudio.paused) {
