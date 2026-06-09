@@ -80,14 +80,22 @@ function playStatusAudio(audioSrc) {
         return;
     }
 
+    const shoulsLoop = !(audioSrc.includes("05.mp3") || audioSrc.includes("06.mp3") || audioSrc.includes("07.mp3"));
+
     const startNewAudio = () => {
         currentAudio = new Audio(audioSrc);
 
-        currentAudio.onended = function () {
-            loopAudioTimer = setTimeout(() => {
-                startNewAudio();
-            }, 5000);
-        };
+        if (shoulsLoop) {
+            currentAudio.onended = function () {
+                loopAudioTimer = setTimeout(() => {
+                    startNewAudio();
+                }, 5000);
+            };
+        } else {
+            currentAudio.onended = function () {
+                currentAudio = null;
+            };
+        }
 
         currentAudio.play()
             .then(() => {
