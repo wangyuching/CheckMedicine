@@ -106,7 +106,7 @@ function playStatusAudio(audioSrc) {
                 console.log("瀏覽器阻擋自動播放，需要使用者點擊網頁任意地方：", err);
 
                 blockedAudio = audioSrc;
-                loopAudioTimer = setTimeout(startNewAudio, 5000);
+                loopAudioTimer = setTimeout(startNewAudio, 50000);
             });
     };
 
