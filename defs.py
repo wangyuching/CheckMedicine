@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import time as t
+from PIL import Image, ImageDraw, ImageFont
 
 def get_target_obb_cls(results, target_cls):
     filtered_boxes = []
@@ -111,6 +112,12 @@ def draw_slots_state(frame, box, slot_idx, slot_data):
     lid_state = slot_data['lid']
     pill_state = "Full" if slot_data['Has_pill'] else "Empty"
 
+    lid_zh = {"Open": "開啟", "Close": "關閉", "Missing": "缺失"}
+    pill_zh = {"Full": "有藥", "Empty": "無藥"}
+    
+    lid_display = lid_zh.get(lid_state, lid_state)
+    pill_display = pill_zh.get(pill_state, pill_state)
+
     if lid_state == "Open" and not slot_data["Has_pill"]:
         color = (0, 255, 0)  # Green for open & empty
     elif lid_state == "Open" and slot_data["Has_pill"]:
@@ -126,12 +133,24 @@ def draw_slots_state(frame, box, slot_idx, slot_data):
         
     cv2.polylines(frame, [points], isClosed=True, color=color, thickness=2)
 
-    label = f"#{slot_idx} {lid_state}"
-    cv2.putText(frame, label, (int(x) - 30, int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img_pil)
+
+    try:
+        font = ImageFont.truetype("NotoSansTC-Regular.ttf", 20)
+    except:
+        font = ImageFont.load_default()
+
+    color_rgb = (color[2], color[1], color[0])
+
+    label = f"第{slot_idx}格\n {lid_display}"
+    draw.text((int(x) - 30, int(y) - 40), label, font=font, fill=color_rgb)
 
     if lid_state == "Open":
-        pill_label = f"{pill_state}"
-        cv2.putText(frame, pill_label, (int(x) - 30, int(y) + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)    
+        pill_label = f"{pill_display}"
+        draw.text((int(x) - 30, int(y) + 20), pill_label, font=font, fill=color_rgb)
+
+    frame[:] = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 def every_slots_state(frame, current_slots_data, tracker, duration, missing, db_insert):
     current_opens = [

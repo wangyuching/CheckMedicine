@@ -191,7 +191,7 @@ def cap_real_time():
                     frame=pill_detect_frame, 
                     current_slots_data=slots_data, 
                     tracker=same_time_tracker, 
-                    duration=5.0, 
+                    duration=1.0, 
                     missing=5.0, 
                     db_insert=insert_status_to_db
                 )        
