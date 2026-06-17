@@ -148,7 +148,7 @@ def draw_slots_state(frame, box, slot_idx, slot_data):
 
     if lid_state == "Open":
         pill_label = f"{pill_display}"
-        draw.text((int(x) - 30, int(y) + 20), pill_label, font=font, fill=color_rgb)
+        draw.text((int(x) - 30, int(y) + 15), pill_label, font=font, fill=color_rgb)
 
     frame[:] = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
